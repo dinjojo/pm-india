@@ -4,15 +4,17 @@ A self hosted web app to track your Indian investments. It shows your net worth,
 
 ## Features
 
-- **Dashboard**: portfolio value, allocation, diversification, and a trend chart
-- **Holdings**: group by asset class, account, owner, or liquidity. Shows key numbers, an allocation bar, and collapsible sections
-- **Tax**: realised and unrealised capital gains (FIFO, LTCG/STCG), a tracker for the Rs 1.25L exemption, 80C progress, a real estate sale what if (both tax regimes, Sec 54/54EC), and dividends/IDCW
-- **Funds explorer**: browse and filter all 38,000+ AMFI schemes, including matured ones. Live search and fund details
-- **Fund analytics**: CAGR, volatility, Sharpe, Sortino, Omega, Calmar, skew, kurtosis, drawdowns, 50/200 DMA buy/sell/hold signals, Monte Carlo VaR and Expected Shortfall, and CAPM alpha/beta against NIFTY 500 TRI
-- **Returns calculator**: lumpsum and SIP, shown in nominal and inflation adjusted terms
-- **Portfolio tools**: upload a CSV or use your tracked funds to get MPT min variance and max Sharpe optimisation, an efficient frontier, CAPM verdicts, a fund overlap matrix, and a curated basket builder
-- **Goals**: a full port of the Freefincal robo advisor workbook. Retirement drawdown with a 4 bucket ladder, income streams with start and stop windows, annuity flooring, scenario analysis, year by year cash flow, and a simple path for people under 26
-- **Imports**: CAS statement, photo of any slip using OCR, or manual entry
+| Page | What it does |
+|---|---|
+| **Dashboard** | Portfolio value, allocation, diversification, and a trend chart |
+| **Holdings** | Group by asset class, account, owner, or liquidity. Key numbers, an allocation bar, and collapsible sections |
+| **Tax** | Realised and unrealised capital gains (FIFO, LTCG/STCG), a tracker for the Rs 1.25L exemption, 80C progress, a real estate sale what if (both tax regimes, Sec 54/54EC), and dividends/IDCW |
+| **Funds explorer** | Browse and filter all 38,000+ AMFI schemes, including matured ones. Live search and fund details |
+| **Fund analytics** | CAGR, volatility, Sharpe, Sortino, Omega, Calmar, skew, kurtosis, drawdowns, 50/200 DMA buy/sell/hold signals, Monte Carlo VaR and Expected Shortfall, and CAPM alpha/beta against NIFTY 500 TRI |
+| **Returns calculator** | Lumpsum and SIP, shown in nominal and inflation adjusted terms |
+| **Portfolio tools** | Upload a CSV or use your tracked funds to get MPT min variance and max Sharpe optimisation, an efficient frontier, CAPM verdicts, a fund overlap matrix, and a curated basket builder |
+| **Goals** | A full port of the Freefincal robo advisor workbook. Retirement drawdown with a 4 bucket ladder, income streams with start and stop windows, annuity flooring, scenario analysis, year by year cash flow, and a simple path for people under 26 |
+| **Imports** | CAS statement, photo of any slip using OCR, or manual entry |
 
 ## Data sources
 
