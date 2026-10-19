@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Screener{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold text-stone-900">Fund Screener</h1>
+    <p class="text-stone-800 text-sm mt-1">Consistency of beating a benchmark, measured on every monthly window since April 2006 (freefincal method). Monthly rolls, total-return indices.</p>
+  </div>
+</div>
+
+<form method="get" class="mt-6 bg-white rounded-xl border border-stone-300 shadow-sm p-5 flex flex-wrap items-end gap-4">
+  <label class="text-sm font-medium text-stone-900">Category
+    <select name="category" class="block mt-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm min-w-52 focus-visible:outline-2 focus-visible:outline-emerald-800">
+      <option value="">All categories</option>
+      {% for c in categories %}<option value="{{ c }}" {% if c == sel_category %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="text-sm font-medium text-stone-900">Benchmark
+    <select name="benchmark" class="block mt-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm min-w-64 focus-visible:outline-2 focus-visible:outline-emerald-800">
+      <option value="">Scheme's own category benchmark</option>
+      {% for b in benchmarks %}<option value="{{ b.key }}" {% if b.key == sel_benchmark %}selected{% endif %}>{{ b.label }}</option>{% endfor %}
+    </select>
+  </label>
+  <div class="text-sm font-medium text-stone-900">Window
+    <div class="mt-1 flex gap-1" role="tablist" aria-label="Rolling window">
+      {% for w in windows %}
+      <button type="submit" name="window" value="{{ w }}" aria-selected="{% if w == sel_window %}true{% else %}false{% endif %}"
+        class="px-3 py-1.5 rounded-full text-sm font-semibold border {% if w == sel_window %}border-emerald-800 bg-emerald-800 text-white{% else %}border-stone-300 text-stone-800 hover:bg-stone-100{% endif %}">{{ w }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="text-sm font-medium text-stone-900">Mode
+    <div class="mt-1 flex gap-1">
+      <button type="submit" name="mode" value="consistency" aria-selected="{% if sel_mode == 'consistency' %}true{% else %}false{% endif %}"
+        class="px-3 py-1.5 rounded-full text-sm font-semibold border {% if sel_mode == 'consistency' %}border-emerald-800 bg-emerald-800 text-white{% else %}border-stone-300 text-stone-800 hover:bg-stone-100{% endif %}">Consistency</button>
+      <button type="submit" name="mode" value="excess" aria-selected="{% if sel_mode == 'excess' %}true{% else %}false{% endif %}"
+        class="px-3 py-1.5 rounded-full text-sm font-semibold border {% if sel_mode == 'excess' %}border-emerald-800 bg-emerald-800 text-white{% else %}border-stone-300 text-stone-800 hover:bg-stone-100{% endif %}">Excess return</button>
+    </div>
+  </div>
+  {% if sel_mode == 'consistency' %}
+  <fieldset class="text-sm font-medium text-stone-900">
+    <legend class="mb-1">Minimum share of windows beaten</legend>
+    <div class="flex gap-3">
+      <label class="text-xs text-stone-800">Outperform
+        <input type="number" name="outperf_min" min="0" max="1" step="0.05" value="{{ outperf_min }}" class="block mt-0.5 w-20 rounded-lg border border-stone-300 px-2 py-1.5 tnum focus-visible:outline-2 focus-visible:outline-emerald-800">
+      </label>
+      <label class="text-xs text-stone-800">Upside
+        <input type="number" name="upside_min" min="0" max="1" step="0.05" value="{{ upside_min }}" class="block mt-0.5 w-20 rounded-lg border border-stone-300 px-2 py-1.5 tnum focus-visible:outline-2 focus-visible:outline-emerald-800">
+      </label>
+      <label class="text-xs text-stone-800">Downside
+        <input type="number" name="downside_min" min="0" max="1" step="0.05" value="{{ downside_min }}" class="block mt-0.5 w-20 rounded-lg border border-stone-300 px-2 py-1.5 tnum focus-visible:outline-2 focus-visible:outline-emerald-800">
+      </label>
+    </div>
+  </fieldset>
+  {% endif %}
+  <input type="hidden" name="go" value="1">
+  <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Run screener</button>
+</form>
+
+{% if not submitted %}
+<div class="mt-6 bg-white rounded-xl border border-stone-300 shadow-sm p-6 max-w-3xl">
+  <h2 class="text-sm font-semibold text-stone-900">How to read the results</h2>
+  <ul class="mt-2 list-disc pl-5 text-sm text-stone-800 flex flex-col gap-1.5">
+    <li><span class="font-semibold text-stone-900">Outperform</span> is the share of all rolling windows in which the fund beat its benchmark's CAGR over the same months.</li>
+    <li><span class="font-semibold text-stone-900">Upside</span> and <span class="font-semibold text-stone-900">Downside</span> split that by whether the benchmark rose or fell in the window. A fund can beat rarely overall yet protect well on the downside; read them separately.</li>
+    <li><span class="font-semibold text-stone-900">Excess</span> is the latest window's fund CAGR minus benchmark CAGR, not an average.</li>
+    <li>Excess-return mode applies the workbook's fourth screen: fund CAGR above benchmark and fund volatility below benchmark in the same window.</li>
+  </ul>
+  <p class="mt-3 text-sm text-stone-800">Basis: month-end NAVs from April 2006, monthly rolls, TRI benchmarks. A scheme needs about six years of history before any of this is computable. Consistency is a description of the past; it is not a probability of future outperformance.</p>
+</div>
+{% endif %}
+
+{% if submitted %}
+<div class="mt-6 bg-white rounded-xl border border-stone-300 shadow-sm overflow-hidden">
+  {% if rows %}
+  <div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-stone-900 border-b border-stone-300">
+        <th class="px-4 py-3 font-semibold">Fund</th>
+        <th class="px-4 py-3 font-semibold">Category</th>
+        <th class="px-4 py-3 font-semibold">Benchmark</th>
+        <th class="px-4 py-3 font-semibold text-right" title="Share of all {{ sel_window }} rolling windows the fund beat the benchmark">Outperform</th>
+        <th class="px-4 py-3 font-semibold text-right" title="Share of benchmark-up windows beaten">Upside</th>
+        <th class="px-4 py-3 font-semibold text-right" title="Share of benchmark-down windows beaten">Downside</th>
+        <th class="px-4 py-3 font-semibold text-right">Fund CAGR</th>
+        <th class="px-4 py-3 font-semibold text-right">Bench CAGR</th>
+        <th class="px-4 py-3 font-semibold text-right">Excess</th>
+        <th class="px-4 py-3 font-semibold text-right" title="Number of monthly windows behind every ratio">Windows</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="border-b border-stone-200 last:border-0 hover:bg-stone-50">
+        <td class="px-4 py-2.5 font-medium text-stone-900 max-w-96"><a href="{% url 'fund_detail' r.code %}" class="hover:underline">{{ r.name }}</a></td>
+        <td class="px-4 py-2.5 text-stone-800">{{ r.category }}</td>
+        <td class="px-4 py-2.5 text-stone-800 text-xs">{{ r.benchmark }}</td>
+        <td class="px-4 py-2.5 text-right">
+          <div class="flex items-center gap-2 justify-end">
+            <div class="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden" aria-hidden="true"><div class="h-full rounded-full {% if r.ro >= 60 %}bg-emerald-700{% elif r.ro >= 45 %}bg-amber-500{% else %}bg-red-600{% endif %}" style="width: {{ r.ro }}%"></div></div>
+            <span class="tnum font-semibold text-stone-900 w-12">{{ r.ro }}%</span>
+          </div>
+        </td>
+        <td class="px-4 py-2.5 text-right tnum text-stone-900">{% if r.up %}{{ r.up }}%{% else %}–{% endif %}</td>
+        <td class="px-4 py-2.5 text-right tnum text-stone-900">{% if r.dc %}{{ r.dc }}%{% else %}–{% endif %}</td>
+        <td class="px-4 py-2.5 text-right tnum text-stone-900">{{ r.tr }}%</td>
+        <td class="px-4 py-2.5 text-right tnum text-stone-800">{{ r.tb }}%</td>
+        <td class="px-4 py-2.5 text-right tnum font-semibold {% if r.ex >= 0 %}text-emerald-800{% else %}text-red-800{% endif %}">{% if r.ex >= 0 %}+{% endif %}{{ r.ex }}%</td>
+        <td class="px-4 py-2.5 text-right tnum text-stone-900">{{ r.n }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="px-4 py-8 text-center text-sm text-stone-800">No funds matched. Loosen the minimums or pick a shorter window.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

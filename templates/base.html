@@ -22,6 +22,7 @@
     <a href="{% url 'holdings' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'holdings' %}font-semibold text-stone-950{% endif %}">Holdings</a>
     <a href="{% url 'tax' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'tax' %}font-semibold text-stone-950{% endif %}">Tax</a>
     <a href="{% url 'funds' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'funds' or request.resolver_match.url_name == 'fund_detail' or request.resolver_match.url_name == 'scheme_analytics' %}font-semibold text-stone-950{% endif %}">Funds</a>
+    <a href="{% url 'screener' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'screener' %}font-semibold text-stone-950{% endif %}">Screener</a>
     <a href="/funds/calculator/" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'returns_calculator' %}font-semibold text-stone-950{% endif %}">Calculator</a>
     <a href="/tools/portfolio-tools/" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'portfolio_tools' %}font-semibold text-stone-950{% endif %}">Portfolio tools</a>
     <a href="{% url 'goals' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'goals' or request.resolver_match.url_name == 'goal_detail' or request.resolver_match.url_name == 'goal_create' %}font-semibold text-stone-950{% endif %}">Goals</a>
