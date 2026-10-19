@@ -157,7 +157,41 @@ Deep read of `AUG-2021-freefincal-Equity-mutual-fund-outperformance-macro-screen
 - Both benchmark variants stay (index + blended), but the user picks one, and the default comes from category mapping instead of a dropdown of raw index names.
 - 1Y windows are included but visually de-emphasised; freefincal himself says short windows are noisy and his published screener emphasises 3Y to 5Y.
 
-## 6. Sources
+## 6. Final consensus: how forecasting should be done in pm-india
+
+Based on everything reviewed (4 ML repos, mfforecast, freefincal, the random-walk literature the repos confirm), the consensus is that "MF forecasting" is four different problems with four different confidence levels, and each gets its own method. One model that claims to predict everything is the mistake every failed repo made.
+
+### What is and is not predictable in the MF domain
+
+| Question | Predictable? | Evidence |
+|---|---|---|
+| NAV level in 1 to 15 days | No (level), yes in distribution | Every honest walk-forward test ties the naive baseline; LSTM wins were baseline artifacts |
+| Fund value today before NAV publishes | Yes | mfforecast: 0.96 correlation from holdings + live prices |
+| How bad can it get (risk) | Yes, in distribution | Volatility clusters and persists; historical/MC distributions work |
+| Which funds stay consistent | Weakly, as a prior | Rolling consistency and downside capture have weak but real persistence; freefincal's own correlation studies show outliers and weak correlation |
+| Corpus at goal date | Yes, as a distribution | Deterministic projection plus MC; standard goal planning |
+
+### The consensus architecture: four layers, one scorecard
+
+**Layer 0: the naive baseline, permanent.** Every forecast layer carries a walk-forward scorecard against "tomorrow equals today" (for levels) or "history repeats with the same distribution" (for distributions). Skill score = 1 minus error ratio. Any layer whose skill is zero or negative hides itself automatically. This is the TruthLens rule and it is non-negotiable.
+
+**Layer 1: nowcast, high confidence, short horizon.** Holdings-based intraday fund value once the MF-Forecast RapidAPI key is available (seam: `holdings_overlap` stub in `core/portfolio_tools.py`). Before that, an approximation using last published NAV plus benchmark drift. Label it "estimated value now", never "forecast".
+
+**Layer 2: distribution forecast, medium confidence, 1 to 15 days.** No point predictions. Exponential smoothing plus SMA ensemble for the center, percentile bands (fan chart, 10/25/50/75/90) from block-bootstrap of the fund's own monthly and daily returns, so fat tails and volatility clustering come from history rather than a Gaussian assumption. Show VaR/expected shortfall next to it (already computed in `fund_analytics.py`). The user sees a range and its odds, not a number.
+
+**Layer 3: consistency signal, low confidence, long horizon.** This is freefincal's domain and it is selection, not prediction: rolling return consistency, upside/downside capture, Ulcer Index, SIP rolling returns, computed per the screener design in section 5. Present as "how this fund has behaved across cycles", with the mandated caveats: not a probability of future outperformance; read upside and downside separately. Never render it as an expected return.
+
+**Layer 4: goal projection, user-critical.** Deterministic path at expected return plus 1,000-path Monte Carlo with inflation, glide path and contribution growth, reporting the corpus distribution and probability of on-time goal completion. Returns assumptions come from the scheme's own history and category, not user optimism.
+
+### Hard rules
+
+1. Walk-forward only; nothing ships that cannot beat its baseline.
+2. Distributions over points, everywhere.
+3. Every number states its basis: window, roll step, benchmark.
+4. No LSTM or deep model anywhere; the research showed no honest edge.
+5. Skill scorecards are permanent and visible, not hidden behind a flag.
+
+## 7. Sources
 
 - freefincal: how upside/downside capture is calculated; how not to use rolling return charts; introduction to capture ratios; equity screener usage guide; SIP rolling returns; data sources for DIY investors (May 2024)
 - GitHub repos listed above, plus Yashvi-Vekariya / Mutual-Fund-Predictive-Analytics (surveyed, forecasting on historical NAV, same random-walk limitation)
