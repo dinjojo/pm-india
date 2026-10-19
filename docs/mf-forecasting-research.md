@@ -118,7 +118,35 @@ Adopt from freefincal, in addition to the metrics already queued (rolling return
 3. Portfolio-level rolling return vs NIFTY 500 (we own the benchmark series already), not just per-fund views. This matches his "compare portfolios, not funds" stance and our MPT tools.
 4. State the calculation basis on screen wherever capture or consistency scores appear.
 
-## 5. Sources
+## 5. Consensus: how to build the freefincal macro screener in pm-india
+
+Deep read of `AUG-2021-freefincal-Equity-mutual-fund-outperformance-macro-screener.xlsm` (4 sheets: Offer, Screener Inputs, Results, Excess Return Lower Risk Screen).
+
+### How the workbook actually works
+
+1. **All the math is precomputed. The macros only filter.** The Results sheet has, per fund × benchmark pair and per window (1Y to 5Y): number of rolling return entries for index and fund, number of times the fund outperformed, and three consistency scores: rolling return outperformance consistency, upside performance consistency, downside protection consistency. The VBA buttons on Screener Inputs do nothing but apply AutoFilter with thresholds and clear it. There is no calculation in the filter step.
+2. **Screener Inputs defines the filter**: thresholds for the three consistency families across all 5 windows, all defaulting to 0.7 (70 percent), plus two dropdowns: fund category and benchmark.
+3. **Benchmarks are category-matched pairs, two per fund.** Aggressive Hybrid is screened against both Crisil 65:35 (65 percent equity/35 percent bonds hybrid index) and Nifty 100 TRI. Equity categories map to N200TRI, Nifty Largemidcap 250 TRI, Nifty Midcap 150 TRI and so on. Each fund appears once per benchmark, so the user judges a fund against a market index and against a blended category-appropriate index.
+4. **The fourth screen, Excess Return Lower Risk**, computes per window: trailing fund and index returns, their excess return, index and fund standard deviation, and their excess risk. The desired filter outcome is positive excess return with negative excess risk: beats the benchmark with less volatility.
+5. The macro is a UI crutch for Excel's lack of query parameters. In a web app the "macro" becomes a URL with query parameters.
+
+### Design consensus for pm-india
+
+**Architecture: precompute offline, filter online.** Exactly the workbook's separation, with the macro replaced by SQL.
+
+1. **Precompute job** (monthly, extendable to weekly) over the local Parquet, restricted to active open-ended equity and hybrid schemes: for each scheme × matched benchmark × window (1Y to 5Y), compute monthly-rolled rolling return consistency, upside consistency, downside consistency, trailing fund and benchmark returns, excess return, fund and benchmark monthly-return stdev, excess risk. Write to a DuckDB/Parquet table, for example `data/screener_metrics.parquet`. Rolling steps are monthly, not daily, so the batch stays tractable; the single-fund analytics page can still do daily rolls on demand.
+2. **Benchmark mapping table**, one default and one blended alternative per category, mirroring his Crisil 65:35 pattern. The hybrid blend can be constructed locally as 0.65 x NIFTY 500 TRI + 0.35 x a short-duration debt proxy, monthly rebalanced, since Crisil index data is not free.
+3. **Filter endpoint**: `GET /screener/?category=&benchmark=&window=&outperf_min=&upside_min=&downside_min=` with defaults of 0.7 everywhere, the same thresholds the workbook ships with. Each threshold is a SQL predicate over the precomputed table. Plus a toggle for his fourth screen: `excess_return > 0 AND excess_risk < 0`.
+4. **Results table**: fund, category, benchmark, window counts (number of rolling windows, so the user sees how much history backs each score), the three consistency scores, excess return and excess risk. Sortable, with consistency scores colored. Show the window count prominently; a 77 percent score over 30 windows means something different from one over 500.
+5. **On-screen calculation basis**, per the earlier freefincal finding: "monthly rolls since Apr 2006, vs Nifty Midcap 150 TRI" stated above the table, and the standing caveats: consistency is not a probability of future outperformance, and read upside and downside separately.
+
+### What we deliberately change from the workbook
+
+- No macros, no 8,000-row flat Results dump: a queryable table and a filtered view.
+- Both benchmark variants stay (index + blended), but the user picks one, and the default comes from category mapping instead of a dropdown of raw index names.
+- 1Y windows are included but visually de-emphasised; freefincal himself says short windows are noisy and his published screener emphasises 3Y to 5Y.
+
+## 6. Sources
 
 - freefincal: how upside/downside capture is calculated; how not to use rolling return charts; introduction to capture ratios; equity screener usage guide; SIP rolling returns; data sources for DIY investors (May 2024)
 - GitHub repos listed above, plus Yashvi-Vekariya / Mutual-Fund-Predictive-Analytics (surveyed, forecasting on historical NAV, same random-walk limitation)
