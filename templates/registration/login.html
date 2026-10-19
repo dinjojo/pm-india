@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Log in{% endblock %}
 {% block content %}
-<div class="max-w-sm mx-auto bg-white rounded-xl border border-stone-200 p-8 mt-10">
+<div class="max-w-sm mx-auto card p-8 mt-10">
   <h1 class="text-xl font-semibold mb-6">Log in · PM<span class="text-emerald-600">India</span></h1>
   {% if form.errors %}
   <p class="text-sm text-red-600 mb-4">Wrong username or password.</p>
@@ -10,15 +10,15 @@
     {% csrf_token %}
     <div>
       <label class="block text-sm font-medium mb-1" for="id_username">Username</label>
-      <input type="text" name="username" id="id_username" required class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+      <input type="text" name="username" id="id_username" required class="block w-full text-sm border border-stone-300 rounded-lg h-9 px-3">
     </div>
     <div>
       <label class="block text-sm font-medium mb-1" for="id_password">Password</label>
-      <input type="password" name="password" id="id_password" required class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+      <input type="password" name="password" id="id_password" required class="block w-full text-sm border border-stone-300 rounded-lg h-9 px-3">
     </div>
     <input type="hidden" name="next" value="{{ next }}">
-    <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg">Log in</button>
+    <button class="btn btn-primary w-full">Log in</button>
   </form>
-  <p class="text-sm text-stone-500 mt-4">New here? <a class="text-emerald-700" href="{% url 'signup' %}">Create an account</a></p>
+  <p class="text-sm text-stone-800 mt-4">New here? <a class="link" href="{% url 'signup' %}">Create an account</a></p>
 </div>
 {% endblock %}

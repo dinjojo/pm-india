@@ -19,11 +19,15 @@ class EngineMathTests(TestCase):
     def test_one_time_sip_reaches_corpus(self):
         r = one_time_goal(cost_today=1_000_000, years_to_goal=10, inflation_override=10.0,
                           current_equity=500_000)
-        bal, m, rr = 0.0, r.monthly_sip, (0.4 * 10 + 0.6 * 6) / 100 / 12
+        # Rigid 10-year glide path: 30% equity for 4 years, then 25/20/15/10/5/0%.
+        weights = [0.3] * 4 + [0.25, 0.2, 0.15, 0.1, 0.05, 0.0]
+        self.assertEqual([round(w, 4) for w in r.glide_path], weights)
+        bal, m = 0.0, r.monthly_sip
         for i in range(120):
             if i and i % 12 == 0:
                 m *= 1.05
-            bal = bal * (1 + rr) + m
+            w = weights[i // 12]
+            bal = bal * (1 + (w * 10 + (1 - w) * 6) / 100 / 12) + m
         self.assertLess(abs(bal - r.net_corpus) / r.net_corpus, 0.001)
 
     def test_flexible_goal_takes_more_equity(self):

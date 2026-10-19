@@ -4,7 +4,7 @@
 {% block content %}
 <div class="flex flex-wrap items-baseline justify-between gap-3">
   <div>
-    <h1 class="text-2xl font-semibold">Portfolio tools</h1>
+    <h1 class="page-title">Portfolio tools</h1>
     <p class="text-stone-800 text-sm mt-1">Mean-variance optimisation, CAPM check, overlap and a basket screener — built on the full AMFI NAV history.</p>
   </div>
   <a href="#basket" class="text-sm font-medium text-emerald-800 hover:underline">Basket builder ↓</a>
@@ -16,7 +16,7 @@
     <input type="hidden" name="action" value="tracked">
     <h2 class="text-lg font-semibold text-stone-900">Use my tracked mutual funds</h2>
     <p class="text-sm text-stone-800 mt-1">One click: your mutual-fund holdings (current value per scheme, summed across folios) go straight into the analysis.</p>
-    <button class="mt-4 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Use my tracked mutual funds</button>
+    <button class="mt-4 btn btn-primary">Use my tracked mutual funds</button>
   </form>
 
   <form method="post" enctype="multipart/form-data" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6">{% csrf_token %}
@@ -32,7 +32,7 @@
       <summary class="text-sm text-emerald-800 font-medium cursor-pointer">…or paste CSV text</summary>
       <textarea name="csv_text" rows="4" class="w-full mt-2 border border-stone-300 rounded-lg px-3 py-2 text-xs tnum" placeholder="{{ sample_csv }}">{{ csv_text }}</textarea>
     </details>
-    <button class="mt-4 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Analyse CSV</button>
+    <button class="mt-4 btn btn-primary">Analyse CSV</button>
   </form>
 </div>
 
@@ -95,7 +95,7 @@
       <tbody>
         {% for f in res.funds %}
         <tr class="border-b border-stone-100">
-          <td class="py-2 px-2"><a href="{% url 'fund_detail' f.code %}" class="text-stone-900 hover:underline">{{ f.name }}</a> <span class="text-xs text-stone-600">{{ f.code }}</span></td>
+          <td class="py-2 px-2"><a href="{% url 'fund_detail' f.code %}" class="text-stone-900 hover:underline">{{ f.name }}</a> <span class="text-xs text-stone-800">{{ f.code }}</span></td>
           <td class="py-2 px-2 text-right">{{ f.amount|inr_short }}</td>
           <td class="py-2 px-2 text-right">{{ f.cagr_pct|floatformat:1 }}%</td>
           <td class="py-2 px-2 text-right">{{ f.vol_pct|floatformat:1 }}%</td>
@@ -206,7 +206,7 @@
       {% endfor %}
       </div>
     </fieldset>
-    <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Build basket</button>
+    <button class="btn btn-primary">Build basket</button>
   </form>
 
   {% if basket %}
@@ -232,7 +232,7 @@
         <tbody>
           {% for f in basket.funds %}
           <tr class="border-b border-stone-100">
-            <td class="py-2 px-2"><a href="{% url 'fund_detail' f.code %}" class="text-stone-900 hover:underline">{{ f.name }}</a> <span class="text-xs text-stone-600">{{ f.code }}</span></td>
+            <td class="py-2 px-2"><a href="{% url 'fund_detail' f.code %}" class="text-stone-900 hover:underline">{{ f.name }}</a> <span class="text-xs text-stone-800">{{ f.code }}</span></td>
             <td class="py-2 px-2">{{ f.category|capfirst }}</td>
             <td class="py-2 px-2 text-right font-semibold">{{ f.weight_pct|floatformat:1 }}%</td>
             <td class="py-2 px-2 text-right">{{ f.cagr_pct|floatformat:1 }}%</td>

@@ -2,60 +2,64 @@
 {% load humanize inr %}
 {% block title %}Protection{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold text-stone-900">Protection</h1>
-<p class="mt-1 text-sm text-stone-800">Insurance protects your income and family. It is not an investment and does not count toward net worth or goal progress.</p>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Protection</h1>
+    <p class="page-lede">Insurance protects your income and family. It is not an investment and does not count toward net worth or goal progress.</p>
+  </div>
+</div>
 
-<div class="mt-6 grid gap-4 md:grid-cols-3">
-  <section class="bg-white rounded-xl border border-stone-300 shadow-sm p-5">
-    <h2 class="text-sm font-medium text-stone-900">Total annual premium</h2>
-    <p class="mt-2 text-2xl font-semibold tnum" title="₹{{ annual_premium|intcomma }}">{{ annual_premium|inr_short }}</p>
-    <p class="mt-2 text-sm text-stone-800">Across {{ policies|length }} recorded polic{{ policies|length|pluralize:"y,ies" }}.</p>
+<div class="grid gap-4 md:grid-cols-3">
+  <section class="card card-body">
+    <h2 class="kpi-label">Total annual premium</h2>
+    <p class="kpi-value" title="₹{{ annual_premium|intcomma }}">{{ annual_premium|inr_short }}</p>
+    <p class="kpi-sub">Across {{ policies|length }} recorded polic{{ policies|length|pluralize:"y,ies" }}.</p>
   </section>
-  <section class="bg-white rounded-xl border border-stone-300 shadow-sm p-5">
-    <h2 class="text-sm font-medium text-stone-900">{% if next_renewal and next_renewal.renewal_date < today %}Renewal overdue{% else %}Next renewal{% endif %}</h2>
+  <section class="card card-body">
+    <h2 class="kpi-label">{% if next_renewal and next_renewal.renewal_date < today %}Renewal overdue{% else %}Next renewal{% endif %}</h2>
     {% if next_renewal %}
-    <p class="mt-2 text-2xl font-semibold tnum {% if next_renewal.renewal_date < today %}text-red-800{% endif %}">{{ next_renewal.renewal_date|date:"j M Y" }}</p>
-    <p class="mt-2 text-sm text-stone-900">{{ next_renewal.insurer }} · {{ next_renewal.get_policy_type_display }}</p>
-    {% else %}<p class="mt-2 text-lg font-semibold">No policies yet</p><p class="mt-2 text-sm text-stone-800">Add your first policy below.</p>{% endif %}
+    <p class="kpi-value {% if next_renewal.renewal_date < today %}text-red-800{% endif %}">{{ next_renewal.renewal_date|date:"j M Y" }}</p>
+    <p class="kpi-sub text-stone-900">{{ next_renewal.insurer }} · {{ next_renewal.get_policy_type_display }}</p>
+    {% else %}<p class="kpi-value-sm mt-1.5">No policies yet</p><p class="kpi-sub">Add your first policy below.</p>{% endif %}
   </section>
-  <section class="bg-white rounded-xl border border-stone-300 shadow-sm p-5">
-    <h2 class="text-sm font-medium text-stone-900">Term-cover adequacy</h2>
+  <section class="card card-body">
+    <h2 class="kpi-label">Term-cover adequacy</h2>
     {% if recommended != None %}
-    <p class="mt-2 text-2xl font-semibold tnum {% if shortfall %}text-red-800{% else %}text-emerald-800{% endif %}">{% if shortfall %}Add {{ shortfall|inr_short }} cover{% else %}Adequate{% endif %}</p>
-    <p class="mt-2 text-sm text-stone-900 tnum">{{ term_cover|inr_short }} counted · {{ recommended|inr_short }} recommended</p>
-    {% else %}<p class="mt-2 text-lg font-semibold">Set your annual income</p><p class="mt-2 text-sm text-stone-800">Use the assumptions below to check cover.</p>{% endif %}
+    <p class="kpi-value {% if shortfall %}text-red-800{% else %}text-emerald-800{% endif %}">{% if shortfall %}Add {{ shortfall|inr_short }} cover{% else %}Adequate{% endif %}</p>
+    <p class="kpi-sub text-stone-900">{{ term_cover|inr_short }} counted · {{ recommended|inr_short }} recommended</p>
+    {% else %}<p class="kpi-value-sm mt-1.5">Set your annual income</p><p class="kpi-sub">Use the assumptions below to check cover.</p>{% endif %}
   </section>
 </div>
 
-<section class="relative mt-6 bg-white rounded-xl border border-stone-300 shadow-sm overflow-hidden">
+<section class="relative mt-6 card overflow-hidden">
   <div class="px-5 py-4 border-b border-stone-300">
-    <h2 class="font-semibold">Your policies</h2>
-    <p class="mt-1 text-sm text-stone-800">Renewal dates are recorded here only. No email, payment or automatic reminder is sent.</p>
+    <h2 class="card-title">Your policies</h2>
+    <p class="mt-0.5 text-sm text-stone-800">Renewal dates are recorded here only. No email, payment or automatic reminder is sent.</p>
   </div>
   {% if policies %}
   <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="data-table [&_th:first-child]:pl-5 [&_td:first-child]:pl-5 [&_th:last-child]:pr-5 [&_td:last-child]:pr-5">
       <caption class="sr-only">Insurance policies ordered by renewal date, oldest first</caption>
-      <thead class="bg-stone-50 text-stone-900 text-left"><tr>
-        <th class="px-5 py-3 font-semibold">Insurer</th><th class="px-5 py-3 font-semibold">Type</th>
-        <th class="px-5 py-3 text-right font-semibold">Cover</th><th class="px-5 py-3 text-right font-semibold">Annual premium</th>
-        <th class="px-5 py-3 font-semibold">Renewal</th><th class="px-5 py-3"><span class="sr-only">Actions</span></th>
+      <thead><tr>
+        <th>Insurer</th><th>Type</th>
+        <th class="num">Cover</th><th class="num">Annual premium</th>
+        <th>Renewal</th><th><span class="sr-only">Actions</span></th>
       </tr></thead>
-      <tbody>{% for p in policies %}<tr class="border-t border-stone-200">
-        <td class="px-5 py-3 font-medium">{{ p.insurer }}</td><td class="px-5 py-3">{{ p.get_policy_type_display }}</td>
-        <td class="px-5 py-3 text-right tnum">₹{{ p.cover_amount|floatformat:0|intcomma }}</td>
-        <td class="px-5 py-3 text-right tnum">₹{{ p.annual_premium|floatformat:0|intcomma }}</td>
-        <td class="px-5 py-3 tnum whitespace-nowrap {% if p.renewal_date < today %}text-red-800{% endif %}">{{ p.renewal_date|date:"j M Y" }}{% if p.renewal_date < today %} · overdue{% elif p.renewal_date == today %} · today{% endif %}</td>
-        <td class="px-5 py-3"><a href="?edit={{ p.pk }}#policy-form" class="text-emerald-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-emerald-700 rounded" aria-label="Edit {{ p.insurer }} {{ p.get_policy_type_display }} policy">Edit</a></td>
+      <tbody class="text-stone-900">{% for p in policies %}<tr>
+        <td class="font-medium text-stone-950">{{ p.insurer }}</td><td>{{ p.get_policy_type_display }}</td>
+        <td class="num">₹{{ p.cover_amount|floatformat:0|intcomma }}</td>
+        <td class="num">₹{{ p.annual_premium|floatformat:0|intcomma }}</td>
+        <td class="whitespace-nowrap {% if p.renewal_date < today %}text-red-800 font-medium{% endif %}">{{ p.renewal_date|date:"j M Y" }}{% if p.renewal_date < today %} · overdue{% elif p.renewal_date == today %} · today{% endif %}</td>
+        <td class="text-right"><a href="?edit={{ p.pk }}#policy-form" class="link" aria-label="Edit {{ p.insurer }} {{ p.get_policy_type_display }} policy">Edit</a></td>
       </tr>{% endfor %}</tbody>
     </table>
   </div>
   {% else %}<p class="px-5 py-6 text-stone-900">No policies recorded. Start with term and health insurance, then add vehicle or other cover.</p>{% endif %}
 </section>
 
-<div class="mt-6 grid gap-6 lg:grid-cols-2">
-  <section id="policy-form" class="bg-white rounded-xl border border-stone-300 shadow-sm p-5">
-    <h2 class="font-semibold">{% if editing %}Edit policy{% else %}Add a policy{% endif %}</h2>
+<div class="mt-6 grid gap-6 lg:grid-cols-2 items-start">
+  <section id="policy-form" class="card card-body">
+    <h2 class="card-title">{% if editing %}Edit policy{% else %}Add a policy{% endif %}</h2>
     <form method="post" class="protection-form mt-4">
       {% csrf_token %}<input type="hidden" name="action" value="policy">
       {% if editing %}<input type="hidden" name="policy_id" value="{{ editing.pk }}">{% endif %}
@@ -64,8 +68,8 @@
         {% for field in policy_form %}<div><label for="{{ field.id_for_label }}" class="block text-sm font-medium">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
       </div>
       <div class="mt-5 flex items-center gap-4">
-        <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-950">Save policy</button>
-        {% if editing %}<a href="{% url 'protection' %}" class="text-sm text-stone-900 underline">Cancel edit</a>{% endif %}
+        <button class="btn btn-primary">Save policy</button>
+        {% if editing %}<a href="{% url 'protection' %}" class="btn btn-secondary">Cancel edit</a>{% endif %}
       </div>
     </form>
     {% if editing %}
@@ -74,8 +78,8 @@
     </form>
     {% endif %}
   </section>
-  <section class="bg-white rounded-xl border border-stone-300 shadow-sm p-5">
-    <h2 class="font-semibold">Term-cover assumptions</h2>
+  <section class="card card-body">
+    <h2 class="card-title">Term-cover assumptions</h2>
     <p class="mt-1 text-sm text-stone-800">Recommended = {{ assumptions.term_cover_multiple }}× annual income + major loans − liquid assets, with a minimum of zero.</p>
     <form method="post" class="protection-form mt-4">
       {% csrf_token %}<input type="hidden" name="action" value="settings">
@@ -85,7 +89,7 @@
       </div>
       <p class="mt-4 text-sm text-stone-800">Only term policies with renewal today or later count. Health, vehicle and other cover never replace income. Enter liquid assets available to dependants, not your home or locked retirement savings.</p>
       <p class="mt-2 text-sm text-stone-800">A planning rule of thumb, not personal insurance advice. Confirm actual policy validity and your family's needs. Assumptions are shared across this single-user installation, like goal settings.</p>
-      <button class="mt-5 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-950">Save assumptions</button>
+      <button class="btn btn-primary mt-5">Save assumptions</button>
     </form>
   </section>
 </div>

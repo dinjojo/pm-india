@@ -28,7 +28,17 @@ class Command(BaseCommand):
             except Exception as exc:
                 raise CommandError(f"NAV refresh failed; existing data was retained: {exc}") from exc
             self.stdout.write(f"Newest NAV: {newest}")
-        df = screener.build(limit=opts["limit"], codes=codes)
+        # build() loads every benchmark series the selected categories map to
+        # (the full universe needs NIFTY 500/200/100, LargeMidcap 250 and
+        # Midcap 150 TRI) and scores each fund against its own category's
+        # index; a missing series aborts rather than falling back silently.
+        try:
+            df = screener.build(limit=opts["limit"], codes=codes)
+        except screener.BenchmarkUnavailable as exc:
+            raise CommandError(f"{exc}; existing metrics were retained") from exc
+        loaded = df.attrs.get("benchmarks_loaded", [])
+        self.stdout.write("benchmarks: " + ", ".join(
+            screener.BENCHMARK_LABELS.get(k, k) for k in loaded))
         self.stdout.write(self.style.SUCCESS(
             f"screener metrics: {len(df)} rows over {df.scheme_code.nunique()} schemes "
             f"-> {screener.SCREENER_PARQUET}"

@@ -1,21 +1,26 @@
 {% load humanize %}
-<tr id="holding-{{ h.holding_pk }}" class="border-t border-stone-100">
-  <td class="px-4 py-3">
+{# Swapped into the Holdings positions table after "Update value" save/cancel: keep the same 9 columns. #}
+<tr id="holding-{{ h.holding_pk }}">
+  <td class="w-10 !pr-0">
+    <span id="star-{{ h.holding_pk }}">{% include "partials/priority_star.html" with holding_pk=h.holding_pk priority=h.priority %}</span>
+  </td>
+  <td class="font-medium text-stone-950 min-w-[11rem]">
     {% include "partials/asset_link.html" with asset=h.asset name=h.name only %}
-    {% if h.manual_value %}<span class="ml-1 text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5" title="No price feed — value entered manually">manual</span>{% endif %}
+    {% if h.manual_value %}<span class="badge badge-manual ml-1" title="No price feed — value entered manually">manual</span>{% endif %}
   </td>
-  <td class="px-4 py-3 text-stone-500">{{ h.asset_type_label }}</td>
-  <td class="px-4 py-3 text-stone-500">{{ h.account }}{% if h.owner %} · {{ h.owner }}{% endif %}</td>
-  <td class="px-4 py-3 text-right tnum">{{ h.quantity|floatformat:3 }}</td>
-  <td class="px-4 py-3 text-right tnum">₹{{ h.invested|floatformat:0|intcomma }}</td>
-  <td class="px-4 py-3 text-right tnum">₹{{ h.current|floatformat:0|intcomma }}</td>
-  <td class="px-4 py-3 text-right tnum {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">
-    ₹{{ h.gain|floatformat:0|intcomma }} ({{ h.gain_pct|floatformat:1 }}%)
+  <td class="min-w-[7rem]">{{ h.account }}{% if h.owner %} · {{ h.owner }}{% endif %}</td>
+  <td class="num hidden xl:table-cell">{{ h.quantity|floatformat:3 }}</td>
+  <td class="num">₹{{ h.invested|floatformat:0|intcomma }}</td>
+  <td class="num font-semibold text-stone-950">₹{{ h.current|floatformat:0|intcomma }}</td>
+  <td class="num {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">
+    ₹{{ h.gain|floatformat:0|intcomma }} <span class="inline-block min-w-[4.5rem] text-right">({{ h.gain_pct|floatformat:1 }}%)</span>
   </td>
-  <td class="px-4 py-3 text-right whitespace-nowrap">
-    <a href="{% url 'add_investment' %}?asset={{ h.holding_pk }}"
-       class="text-sm text-emerald-700 hover:underline focus-visible:outline-2 focus-visible:outline-emerald-600 rounded">Add transaction</a>
-    <button hx-get="{% url 'update_value' h.holding_pk %}" hx-target="#holding-{{ h.holding_pk }}" hx-swap="outerHTML"
-            class="text-sm text-stone-500 hover:text-stone-800 hover:underline focus-visible:outline-2 focus-visible:outline-emerald-600 rounded">Update value</button>
+  <td class="num text-xs text-stone-800" title="Weights update when the page reloads">—</td>
+  <td class="text-right whitespace-nowrap">
+    <span class="inline-flex flex-col items-end gap-1 xl:flex-row xl:items-center xl:gap-3">
+      <a href="{% url 'add_investment' %}?asset={{ h.holding_pk }}" class="link text-sm">Add txn</a>
+      <button hx-get="{% url 'update_value' h.holding_pk %}" hx-target="#holding-{{ h.holding_pk }}" hx-swap="outerHTML"
+              class="cursor-pointer text-sm font-medium text-stone-900 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-emerald-700 rounded">Update value</button>
+    </span>
   </td>
 </tr>

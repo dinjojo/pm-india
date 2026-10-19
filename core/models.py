@@ -272,6 +272,10 @@ class RetirementSettings(models.Model):
     taxfree_return = models.DecimalField(max_digits=5, decimal_places=2, default=7,
                                          help_text="Tax-free FI return % — PPF/EPF (Settings!C8)")
     life_expectancy = models.PositiveIntegerField(default=90, help_text="Settings!C4")
+    spouse_age = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Spouse's age (Step 1 F8); the plan runs the age gap longer (Settings!C10). "
+                  "Blank = single")
     term_cover_multiple = models.PositiveSmallIntegerField(
         default=12, choices=[(n, f"{n}× annual income") for n in range(10, 16)])
     protection_annual_income = models.DecimalField(
@@ -300,7 +304,8 @@ class RetirementSettings(models.Model):
                            equity_return=float(self.equity_return),
                            fixed_return=float(self.taxable_fi_return),
                            taxfree_return=float(self.taxfree_return),
-                           life_expectancy=int(self.life_expectancy))
+                           life_expectancy=int(self.life_expectancy),
+                           spouse_age=int(self.spouse_age) if self.spouse_age is not None else None)
 
 
 class InsurancePolicy(models.Model):

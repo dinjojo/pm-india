@@ -103,6 +103,101 @@ class SchemeBenchmarksTests(SimpleTestCase):
         self.assertEqual(list(got), ["nifty500_tri"])
 
 
+class WorkbookBenchmarkMappingTests(SimpleTestCase):
+    """Category defaults follow the AUG-2021 freefincal workbook."""
+    WORKBOOK = {
+        "ELSS": "nifty200_tri",
+        "Focussed Fund": "largemid250_tri",
+        "Multi Cap Fund": "largemid250_tri",
+        "Small Cap Fund": "midcap150_tri",
+        "Value Fund": "nifty100_tri",
+        "Contra Fund": "nifty100_tri",
+        "Dividend Yield Fund": "nifty100_tri",
+        "Sectoral/Thematic": "nifty100_tri",
+    }
+
+    def test_changed_categories_use_workbook_index(self):
+        for cat, key in self.WORKBOOK.items():
+            with self.subTest(cat=cat):
+                self.assertEqual(sc.BENCHMARK_MAP[cat], (key, None))
+
+    def test_scheme_benchmarks_selects_workbook_series(self):
+        bench = {k: object() for k in sc.BENCHMARK_LABELS}
+        for cat, key in self.WORKBOOK.items():
+            with self.subTest(cat=cat):
+                self.assertEqual(list(sc.scheme_benchmarks(cat, bench)), [key])
+
+    def test_every_mapped_key_has_label_and_source(self):
+        for key in sc.needed_benchmarks():
+            with self.subTest(key=key):
+                self.assertIn(key, sc.BENCHMARK_LABELS)
+                if key != "crisil6535":
+                    self.assertIn(key, sc.JUGAAD_INDICES)
+        self.assertEqual(sc.BENCHMARK_LABELS["nifty200_tri"], "NIFTY 200 TRI")
+
+
+class BuildScreenerBenchmarkTests(SimpleTestCase):
+    def _universe(self):
+        cats = list(sc.BENCHMARK_MAP)
+        return pd.DataFrame({"scheme_code": range(1, len(cats) + 1),
+                             "scheme_name": [f"Fund {c}" for c in cats],
+                             "category": cats, "n": 2000})
+
+    def test_full_build_loads_every_required_series(self):
+        from django.core.management import call_command
+        idx = pd.bdate_range("2006-03-01", periods=3000)
+        series = pd.Series(np.linspace(100, 500, len(idx)), index=idx)
+        seen = {}
+
+        def fake_metrics(code, bench):
+            seen[code] = sorted(bench)
+            return [{"scheme_code": code, "benchmark": k, "ro3Y": 0.5} for k in bench]
+
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(sc, "SCREENER_PARQUET", os.path.join(tmp, "m.parquet")), \
+             mock.patch.object(sc, "universe", return_value=self._universe()), \
+             mock.patch.object(sc, "load_nifty500_tri", return_value=series), \
+             mock.patch.object(sc, "load_benchmark",
+                               side_effect=lambda k: (series, sc.BENCHMARK_LABELS[k])) as lb, \
+             mock.patch.object(sc, "build_crisil_proxy", return_value=series), \
+             mock.patch.object(sc, "scheme_metrics", side_effect=fake_metrics), \
+             mock.patch.object(nav_history, "latest_nav_date",
+                               return_value=idx[-1].date()):
+            call_command("build_screener", stdout=out)
+            written = pd.read_parquet(sc.SCREENER_PARQUET)
+        loaded = {c.args[0] for c in lb.call_args_list}
+        self.assertEqual(loaded, {"nifty100_tri", "nifty200_tri", "largemid250_tri",
+                                  "midcap150_tri"})
+        for label in ("NIFTY 500 TRI", "NIFTY 200 TRI", "NIFTY 100 TRI",
+                      "NIFTY LARGEMIDCAP 250 TRI", "NIFTY MIDCAP 150 TRI"):
+            self.assertIn(label, out.getvalue())
+        # every fund was scored against its own category's series only
+        uni = self._universe()
+        for code, cat in zip(uni.scheme_code, uni.category):
+            expected = sorted(k for k in sc.BENCHMARK_MAP[cat] if k)
+            self.assertEqual(seen[code], expected, cat)
+        self.assertIn("nav_as_of", written.columns)
+
+    def test_missing_series_aborts_instead_of_mislabelled_fallback(self):
+        from django.core.management import call_command, CommandError
+        idx = pd.bdate_range("2006-03-01", periods=3000)
+        series = pd.Series(np.linspace(100, 500, len(idx)), index=idx)
+        uni = self._universe()
+        uni = uni[uni.category == "ELSS"]
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(sc, "SCREENER_PARQUET", os.path.join(tmp, "m.parquet")), \
+             mock.patch.object(sc, "universe", return_value=uni), \
+             mock.patch.object(sc, "load_nifty500_tri", return_value=series), \
+             mock.patch.object(sc, "load_benchmark",
+                               return_value=(None, "NIFTY 500 TRI")), \
+             mock.patch.object(sc, "scheme_metrics") as metrics:
+            with self.assertRaisesRegex(CommandError, "nifty200_tri"):
+                call_command("build_screener", stdout=io.StringIO())
+            metrics.assert_not_called()
+            self.assertFalse(os.path.exists(sc.SCREENER_PARQUET))
+
+
 class ScreenerQueryTests(SimpleTestCase):
     def test_none_thresholds_skip_predicates(self):
         from unittest import mock

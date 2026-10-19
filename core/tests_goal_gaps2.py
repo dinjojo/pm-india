@@ -12,6 +12,30 @@ from core.models import GoalPlan
 BASE = dict(current_age=35, retire_age=50, monthly_expense=50_000)
 
 
+# ------------------------------------------------------------ spouse age gap
+class SpouseAgeGapTests(TestCase):
+    """Settings!C10 = C4 - MAX(age, retire age) + (older - younger spouse age)."""
+
+    def test_spouse_gap_extends_plan(self):
+        from core.goals import Assumptions, planning_period
+        single = retirement_plan(**BASE)
+        couple = retirement_plan(**BASE, a=Assumptions(spouse_age=40))  # 5 years older
+        self.assertEqual(len(single.cash_flow), 40)
+        self.assertEqual(len(couple.cash_flow), 45)
+        self.assertGreater(couple.gross_corpus, single.gross_corpus)
+        self.assertEqual(planning_period(35, 50, Assumptions(spouse_age=30)), 45)
+        self.assertEqual(planning_period(35, 50, Assumptions(spouse_age=35)), 40)
+        self.assertEqual(planning_period(70, 60, Assumptions()), 20)  # already retired
+
+    def test_settings_spouse_age_reaches_assumptions(self):
+        from core.models import RetirementSettings
+        s = RetirementSettings.load()
+        self.assertIsNone(s.to_assumptions().spouse_age)
+        s.spouse_age = 40
+        s.save()
+        self.assertEqual(RetirementSettings.load().to_assumptions().spouse_age, 40)
+
+
 # ------------------------------------------------------------ income windows
 class IncomeWindowTests(TestCase):
     def test_stream_active_only_within_window(self):
@@ -34,12 +58,28 @@ class IncomeWindowTests(TestCase):
         self.assertEqual(a.gross_corpus, b.gross_corpus)
 
     def test_stream_grows_at_escalation_through_window(self):
+        # Step 6B AE: the stream pays C32 (value at retirement) in its start
+        # year, then escalates once a year while it pays.
         r = retirement_plan(**BASE, income_streams=[(10_000, 5, 3, 8)])
         at_ret = 10_000 * 12 * 1.05 ** 15
         self.assertEqual(r.cash_flow[2]["income"], 0)
-        self.assertAlmostEqual(r.cash_flow[3]["income"], at_ret * 1.05 ** 3, delta=1)
-        self.assertAlmostEqual(r.cash_flow[7]["income"], at_ret * 1.05 ** 7, delta=1)
+        self.assertAlmostEqual(r.cash_flow[3]["income"], at_ret, delta=1)
+        self.assertAlmostEqual(r.cash_flow[7]["income"], at_ret * 1.05 ** 4, delta=1)
         self.assertEqual(r.cash_flow[8]["income"], 0)
+
+    def test_deferred_stream_does_not_escalate_while_waiting(self):
+        # Workbook: C32 = B32 * (1 + B33)^B7 (B7 = years to retirement) and AE = C32
+        # in the start year. ₹1L a year today at 5%, retiring now, starting in
+        # retirement year 5 (workbook F32 = 5, 0-based start 4) pays ₹1L that
+        # year, not ₹1L * 1.05^4 = ₹1.2155L.
+        r = retirement_plan(current_age=60, retire_age=60, monthly_expense=100_000,
+                            income_streams=[(100_000 / 12, 5, 4, None)])
+        self.assertEqual(r.cash_flow[3]["income"], 0)
+        self.assertAlmostEqual(r.cash_flow[4]["income"], 100_000, delta=1)
+        self.assertAlmostEqual(r.cash_flow[5]["income"], 105_000, delta=1)
+        # With years to retirement, only that span escalates the start amount.
+        later = retirement_plan(**BASE, income_streams=[(100_000 / 12, 5, 4, None)])
+        self.assertAlmostEqual(later.cash_flow[4]["income"], 100_000 * 1.05 ** 15, delta=1)
 
     def test_window_raises_corpus_vs_lifelong(self):
         life = retirement_plan(**BASE, income_streams=[(20_000, 0)])
@@ -162,9 +202,17 @@ CAR = dict(cost_today=1_000_000, years_to_goal=10, inflation_override=10.0)
 
 
 class ExistingCorpusTests(TestCase):
-    def test_existing_corpus_compounds_full_horizon_despite_late_sip(self):
-        r = one_time_goal(**CAR, years_to_start=3, current_equity=500_000)
-        self.assertEqual(r.fv_current, 1_296_871)  # 5L * 1.10^10, not 1.10^7
+    def test_existing_corpus_compounds_from_sip_start_like_workbook(self):
+        # Step 4A B19 = value * (1 + r)^(B4 - B5): 5L equity, goal in 10 years,
+        # SIP from year 4 -> 5L * 1.10^6 = 8.86L, not 5L * 1.10^10 = 12.97L.
+        r = one_time_goal(**CAR, years_to_start=4, current_equity=500_000)
+        self.assertEqual(r.fv_current, round(500_000 * 1.10 ** 6))
+        self.assertEqual(r.fv_current, 885_781)
+        fi = one_time_goal(**CAR, years_to_start=4, current_taxable_fi=100_000,
+                           current_taxfree_fi=100_000)
+        self.assertEqual(fi.fv_current, round(100_000 * 1.06 ** 6 + 100_000 * 1.07 ** 6))
+        now = one_time_goal(**CAR, current_equity=500_000)
+        self.assertEqual(now.fv_current, 1_296_871)  # SIP starts now: full 10 years
 
     def test_existing_corpus_reduces_sip_and_lumpsum(self):
         bare = one_time_goal(**CAR)
@@ -177,6 +225,43 @@ class ExistingCorpusTests(TestCase):
         self.assertEqual(r.monthly_sip, 0)
         self.assertEqual(r.schedule, [])
         self.assertGreater(r.lumpsum_now, 0)
+
+
+class GlidePathTests(TestCase):
+    """Settings rows 45-48 / Step 4A column F: equity glides from E45 to G45."""
+
+    def test_glide_path_matches_workbook_schedule(self):
+        from core.goals import glide_path
+        r = lambda p: [round(w, 4) for w in p]  # noqa: E731
+        self.assertEqual(r(glide_path(False, 3)), [0, 0, 0])
+        self.assertEqual(r(glide_path(True, 3)), [0.1, 0.1, 0.1])
+        self.assertEqual(r(glide_path(True, 10)),
+                         [0.4] * 4 + [0.3667, 0.3333, 0.3, 0.2667, 0.2333, 0.2])
+        p20 = glide_path(False, 20)  # 60% for 8 years, to 30% over 6, to 0% over 6
+        self.assertEqual(r(p20[:8]), [0.6] * 8)
+        self.assertAlmostEqual(p20[13], 0.3)
+        self.assertAlmostEqual(p20[-1], 0.0)
+        self.assertAlmostEqual(glide_path(True, 25)[-1], 0.2)
+
+    def test_sip_follows_glide_path_and_tracks_workbook(self):
+        # Workbook goal seek: J = (12 * I + J_prev) * (1 + H) each year, H from the glide.
+        def workbook_sip(net, flexible, n):
+            from core.goals import glide_path
+            j, i = 0.0, 1.0
+            for w in glide_path(flexible, n):
+                j = (12 * i + j) * (1 + w * 0.10 + (1 - w) * 0.06)
+                i *= 1.05
+            return net / j
+        for flexible, n in ((False, 3), (True, 10), (False, 20)):
+            r = one_time_goal(cost_today=1_000_000, years_to_goal=n, flexible=flexible)
+            wb = workbook_sip(r.net_corpus, flexible, n)
+            # The app invests monthly rather than 12 x SIP at each year start, so it
+            # asks slightly more (never less) than the workbook.
+            self.assertGreaterEqual(r.monthly_sip, wb)
+            self.assertLess(r.monthly_sip / wb - 1, 0.035)
+        flex = one_time_goal(cost_today=1_000_000, years_to_goal=10, flexible=True)
+        self.assertEqual(flex.equity_alloc_pct, 40)
+        self.assertAlmostEqual(flex.year_returns[-1], 6.8)
 
 
 class LumpsumVsSipTests(TestCase):
@@ -205,7 +290,7 @@ class DeriskTests(TestCase):
         for i in range(120):
             if i and i % 12 == 0:
                 m *= 1.05
-            rate = (safe.pre_goal_return if i < 84 else 6.0) / 100 / 12
+            rate = (safe.year_returns[i // 12] if i < 84 else 6.0) / 100 / 12
             bal = bal * (1 + rate) + m
         self.assertLess(abs(bal - safe.net_corpus) / safe.net_corpus, 0.001)
 

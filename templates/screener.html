@@ -1,67 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Screener{% endblock %}
 {% block content %}
-<div class="flex flex-wrap items-baseline justify-between gap-3">
+<div class="page-head">
   <div>
-    <h1 class="text-2xl font-semibold text-stone-900">Fund Screener</h1>
-    <p class="text-stone-800 text-sm mt-1">Consistency of beating a benchmark, measured on every monthly window since April 2006 (freefincal method). Monthly rolls, total-return indices.</p>
-    <p class="text-sm text-stone-900 mt-2 tnum">{% if data_as_of %}Data as of <time datetime="{{ data_as_of|date:'Y-m-d' }}">{{ data_as_of|date:"j M Y" }}</time> <span class="text-stone-800">(newest NAV in this build's source; metrics also depend on benchmark coverage).</span>{% else %}Data date unavailable. Run <code>build_screener --refresh</code> to build dated metrics.{% endif %}</p>
+    <h1 class="page-title">Fund Screener</h1>
+    <p class="page-lede">Consistency of beating a benchmark, measured on every monthly window since April 2006 (freefincal method). Monthly rolls, total-return indices.</p>
+    <p class="text-sm text-stone-900 mt-1 tnum">{% if data_as_of %}Data as of <time datetime="{{ data_as_of|date:'Y-m-d' }}" class="font-semibold">{{ data_as_of|date:"j M Y" }}</time> <span class="text-stone-800">(newest NAV in this build's source; metrics also depend on benchmark coverage).</span>{% else %}Data date unavailable. Run <code>build_screener --refresh</code> to build dated metrics.{% endif %}</p>
   </div>
 </div>
 
-<form method="get" class="mt-6 bg-white rounded-xl border border-stone-300 shadow-sm p-5 flex flex-wrap items-end gap-4">
-  <label class="text-sm font-medium text-stone-900">Category
-    <select name="category" class="block mt-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm min-w-52 focus-visible:outline-2 focus-visible:outline-emerald-800">
+<form method="get" class="card card-body flex flex-wrap items-end gap-x-6 gap-y-4">
+  <label class="field-label mb-0">Category
+    <select name="category" class="field mt-1 min-w-52 font-normal">
       <option value="">All categories</option>
       {% for c in categories %}<option value="{{ c }}" {% if c == sel_category %}selected{% endif %}>{{ c }}</option>{% endfor %}
     </select>
   </label>
-  <label class="text-sm font-medium text-stone-900">Benchmark
-    <select name="benchmark" class="block mt-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm min-w-64 focus-visible:outline-2 focus-visible:outline-emerald-800">
+  <label class="field-label mb-0">Benchmark
+    <select name="benchmark" class="field mt-1 min-w-64 font-normal">
       <option value="">Scheme's own category benchmark</option>
       {% for b in benchmarks %}<option value="{{ b.key }}" {% if b.key == sel_benchmark %}selected{% endif %}>{{ b.label }}</option>{% endfor %}
     </select>
   </label>
-  <div class="text-sm font-medium text-stone-900">Window
+  <div class="field-label mb-0">Window
     <div class="mt-1 flex gap-1" role="tablist" aria-label="Rolling window">
       {% for w in windows %}
-      <button type="submit" name="window" value="{{ w }}" aria-selected="{% if w == sel_window %}true{% else %}false{% endif %}"
-        class="px-3 py-1.5 rounded-full text-sm font-semibold border {% if w == sel_window %}border-emerald-800 bg-emerald-800 text-white{% else %}border-stone-300 text-stone-800 hover:bg-stone-100{% endif %}">{{ w }}</button>
+      <button type="submit" name="window" value="{{ w }}" aria-selected="{% if w == sel_window %}true{% else %}false{% endif %}" class="chip chip-lg">{{ w }}</button>
       {% endfor %}
     </div>
   </div>
-  <div class="text-sm font-medium text-stone-900">Mode
+  <div class="field-label mb-0">Mode
     <div class="mt-1 flex gap-1">
-      <button type="submit" name="mode" value="consistency" aria-selected="{% if sel_mode == 'consistency' %}true{% else %}false{% endif %}"
-        class="px-3 py-1.5 rounded-full text-sm font-semibold border {% if sel_mode == 'consistency' %}border-emerald-800 bg-emerald-800 text-white{% else %}border-stone-300 text-stone-800 hover:bg-stone-100{% endif %}">Consistency</button>
-      <button type="submit" name="mode" value="excess" aria-selected="{% if sel_mode == 'excess' %}true{% else %}false{% endif %}"
-        class="px-3 py-1.5 rounded-full text-sm font-semibold border {% if sel_mode == 'excess' %}border-emerald-800 bg-emerald-800 text-white{% else %}border-stone-300 text-stone-800 hover:bg-stone-100{% endif %}">Excess return</button>
+      <button type="submit" name="mode" value="consistency" aria-selected="{% if sel_mode == 'consistency' %}true{% else %}false{% endif %}" class="chip chip-lg">Consistency</button>
+      <button type="submit" name="mode" value="excess" aria-selected="{% if sel_mode == 'excess' %}true{% else %}false{% endif %}" class="chip chip-lg">Excess return</button>
     </div>
   </div>
   {% if sel_mode == 'consistency' %}
-  <fieldset class="text-sm font-medium text-stone-900">
-    <legend class="mb-1">Minimum share of windows beaten</legend>
-    <div class="flex gap-3">
-      <label class="text-xs text-stone-800">Outperform
-        <input type="number" name="outperf_min" min="0" max="1" step="0.05" value="{{ outperf_min }}" class="block mt-0.5 w-20 rounded-lg border border-stone-300 px-2 py-1.5 tnum focus-visible:outline-2 focus-visible:outline-emerald-800">
-      </label>
-      <label class="text-xs text-stone-800">Upside
-        <input type="number" name="upside_min" min="0" max="1" step="0.05" value="{{ upside_min }}" placeholder="any" class="block mt-0.5 w-20 rounded-lg border border-stone-300 px-2 py-1.5 tnum placeholder:text-stone-400 focus-visible:outline-2 focus-visible:outline-emerald-800">
-      </label>
-      <label class="text-xs text-stone-800">Downside
-        <input type="number" name="downside_min" min="0" max="1" step="0.05" value="{{ downside_min }}" placeholder="any" class="block mt-0.5 w-20 rounded-lg border border-stone-300 px-2 py-1.5 tnum placeholder:text-stone-400 focus-visible:outline-2 focus-visible:outline-emerald-800">
-      </label>
-    </div>
+  <fieldset class="flex items-end gap-3">
+    <legend class="field-label">Minimum share of windows beaten</legend>
+    <label class="text-xs font-medium text-stone-900">Outperform
+      <input type="number" name="outperf_min" min="0" max="1" step="0.05" value="{{ outperf_min }}" class="field mt-1 w-24">
+    </label>
+    <label class="text-xs font-medium text-stone-900">Upside
+      <input type="number" name="upside_min" min="0" max="1" step="0.05" value="{{ upside_min }}" placeholder="any" class="field mt-1 w-24">
+    </label>
+    <label class="text-xs font-medium text-stone-900">Downside
+      <input type="number" name="downside_min" min="0" max="1" step="0.05" value="{{ downside_min }}" placeholder="any" class="field mt-1 w-24">
+    </label>
   </fieldset>
   {% endif %}
   <input type="hidden" name="go" value="1">
-  <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-5 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Run screener</button>
+  <button class="btn btn-primary ml-auto">Run screener</button>
 </form>
 
 {% if not submitted %}
-<div class="mt-6 bg-white rounded-xl border border-stone-300 shadow-sm p-6 max-w-3xl">
-  <h2 class="text-sm font-semibold text-stone-900">How to read the results</h2>
-  <ul class="mt-2 list-disc pl-5 text-sm text-stone-800 flex flex-col gap-1.5">
+<div class="mt-6 card card-body max-w-4xl">
+  <h2 class="card-title">How to read the results</h2>
+  <ul class="mt-2 list-disc pl-5 text-sm text-stone-900 flex flex-col gap-1.5">
     <li><span class="font-semibold text-stone-900">Outperform</span> is the share of all rolling windows in which the fund beat its benchmark's CAGR over the same months.</li>
     <li><span class="font-semibold text-stone-900">Upside</span> and <span class="font-semibold text-stone-900">Downside</span> split that by whether the benchmark rose or fell in the window. A fund can beat rarely overall yet protect well on the downside; read them separately.</li>
     <li><span class="font-semibold text-stone-900">Excess</span> is the latest window's fund CAGR minus benchmark CAGR, not an average.</li>
@@ -76,42 +71,42 @@
   <p class="text-sm font-semibold text-stone-900">{{ match_count }} fund{{ match_count|pluralize }} matched{% if scheme_count and scheme_count != match_count %} <span class="font-normal text-stone-800">({{ scheme_count }} distinct scheme{{ scheme_count|pluralize }}; hybrids are listed once per benchmark)</span>{% endif %}</p>
   {% if page and page.paginator.num_pages > 1 %}<p class="text-sm text-stone-800 tnum">Showing {{ page.start_index }}–{{ page.end_index }} of {{ match_count }}</p>{% endif %}
 </div>
-<div class="mt-2 bg-white rounded-xl border border-stone-300 shadow-sm overflow-hidden">
+<div class="mt-2 card overflow-hidden">
   {% if rows %}
   <div class="overflow-x-auto">
-  <table class="w-full text-sm">
+  <table class="data-table">
     <thead>
-      <tr class="text-left text-stone-900 border-b border-stone-300">
-        <th class="px-4 py-3 font-semibold">Fund</th>
-        <th class="px-4 py-3 font-semibold">Category</th>
-        <th class="px-4 py-3 font-semibold">Benchmark</th>
-        <th class="px-4 py-3 font-semibold text-right" title="Share of all {{ sel_window }} rolling windows the fund beat the benchmark">Outperform</th>
-        <th class="px-4 py-3 font-semibold text-right" title="Share of benchmark-up windows beaten">Upside</th>
-        <th class="px-4 py-3 font-semibold text-right" title="Share of benchmark-down windows beaten">Downside</th>
-        <th class="px-4 py-3 font-semibold text-right">Fund CAGR</th>
-        <th class="px-4 py-3 font-semibold text-right">Bench CAGR</th>
-        <th class="px-4 py-3 font-semibold text-right">Excess</th>
-        <th class="px-4 py-3 font-semibold text-right" title="Number of monthly windows behind every ratio">Windows</th>
+      <tr>
+        <th>Fund</th>
+        <th>Category</th>
+        <th>Benchmark</th>
+        <th class="num" title="Share of all {{ sel_window }} rolling windows the fund beat the benchmark">Outperform</th>
+        <th class="num" title="Share of benchmark-up windows beaten">Upside</th>
+        <th class="num" title="Share of benchmark-down windows beaten">Downside</th>
+        <th class="num">Fund CAGR</th>
+        <th class="num">Bench CAGR</th>
+        <th class="num">Excess</th>
+        <th class="num" title="Number of monthly windows behind every ratio">Windows</th>
       </tr>
     </thead>
-    <tbody>
+    <tbody class="text-stone-900">
       {% for r in rows %}
-      <tr class="border-b border-stone-200 last:border-0 hover:bg-stone-50">
-        <td class="px-4 py-2.5 font-medium text-stone-900 max-w-96"><a href="{% url 'fund_detail' r.code %}" class="block underline underline-offset-2 hover:text-emerald-800 focus-visible:outline-2 focus-visible:outline-emerald-700 rounded">{{ r.name }}</a></td>
-        <td class="px-4 py-2.5 text-stone-800">{{ r.category }}</td>
-        <td class="px-4 py-2.5 text-stone-800 text-xs">{{ r.benchmark }}</td>
-        <td class="px-4 py-2.5 text-right">
+      <tr>
+        <td class="font-medium text-stone-950 max-w-96"><a href="{% url 'fund_detail' r.code %}" class="block underline decoration-stone-400 underline-offset-2 hover:text-emerald-800 hover:decoration-emerald-800 focus-visible:outline-2 focus-visible:outline-emerald-700 rounded">{{ r.name }}</a></td>
+        <td class="whitespace-nowrap">{{ r.category }}</td>
+        <td class="text-xs">{{ r.benchmark }}</td>
+        <td class="num">
           <div class="flex items-center gap-2 justify-end">
             <div class="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden" aria-hidden="true"><div class="h-full rounded-full {% if r.ro >= 60 %}bg-emerald-700{% elif r.ro >= 45 %}bg-amber-500{% else %}bg-red-600{% endif %}" style="width: {{ r.ro }}%"></div></div>
-            <span class="tnum font-semibold text-stone-900 w-12">{{ r.ro }}%</span>
+            <span class="font-semibold text-stone-950 w-12">{{ r.ro }}%</span>
           </div>
         </td>
-        <td class="px-4 py-2.5 text-right tnum text-stone-900">{% if r.up %}{{ r.up }}%{% else %}–{% endif %}</td>
-        <td class="px-4 py-2.5 text-right tnum text-stone-900">{% if r.dc %}{{ r.dc }}%{% else %}–{% endif %}</td>
-        <td class="px-4 py-2.5 text-right tnum text-stone-900">{{ r.tr }}%</td>
-        <td class="px-4 py-2.5 text-right tnum text-stone-800">{{ r.tb }}%</td>
-        <td class="px-4 py-2.5 text-right tnum font-semibold {% if r.ex >= 0 %}text-emerald-800{% else %}text-red-800{% endif %}">{% if r.ex >= 0 %}+{% endif %}{{ r.ex }}%</td>
-        <td class="px-4 py-2.5 text-right tnum text-stone-900">{{ r.n }}</td>
+        <td class="num">{% if r.up %}{{ r.up }}%{% else %}–{% endif %}</td>
+        <td class="num">{% if r.dc %}{{ r.dc }}%{% else %}–{% endif %}</td>
+        <td class="num">{{ r.tr }}%</td>
+        <td class="num">{{ r.tb }}%</td>
+        <td class="num font-semibold {% if r.ex >= 0 %}text-emerald-800{% else %}text-red-800{% endif %}">{% if r.ex >= 0 %}+{% endif %}{{ r.ex }}%</td>
+        <td class="num">{{ r.n }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -121,21 +116,21 @@
   <nav class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-stone-300 text-sm" aria-label="Results pages">
     <div class="flex gap-2">
       {% if page.has_previous %}
-      <a href="?{{ page_query }}&amp;page=1" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">« First</a>
-      <a href="?{{ page_query }}&amp;page={{ page.previous_page_number }}" rel="prev" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">‹ Previous</a>
+      <a href="?{{ page_query }}&amp;page=1" class="btn btn-secondary btn-sm">« First</a>
+      <a href="?{{ page_query }}&amp;page={{ page.previous_page_number }}" rel="prev" class="btn btn-secondary btn-sm">‹ Previous</a>
       {% endif %}
     </div>
-    <span class="text-stone-800 tnum">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    <span class="text-stone-900 tnum">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
     <div class="flex gap-2">
       {% if page.has_next %}
-      <a href="?{{ page_query }}&amp;page={{ page.next_page_number }}" rel="next" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">Next ›</a>
-      <a href="?{{ page_query }}&amp;page={{ page.paginator.num_pages }}" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">Last »</a>
+      <a href="?{{ page_query }}&amp;page={{ page.next_page_number }}" rel="next" class="btn btn-secondary btn-sm">Next ›</a>
+      <a href="?{{ page_query }}&amp;page={{ page.paginator.num_pages }}" class="btn btn-secondary btn-sm">Last »</a>
       {% endif %}
     </div>
   </nav>
   {% endif %}
   {% else %}
-  <p class="px-4 py-8 text-center text-sm text-stone-800">No funds matched. Loosen the minimums or pick a shorter window.</p>
+  <p class="px-4 py-8 text-center text-sm text-stone-900">No funds matched. Loosen the minimums or pick a shorter window.</p>
   {% endif %}
 </div>
 {% endif %}

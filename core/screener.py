@@ -22,12 +22,13 @@ The denominator is always the fund's own aligned window count (the workbook
 had 8 rows where index and fund counts diverged by a few months; aligning the
 two series first removes that artifact).
 
-Benchmark policy: every category gets two benchmark variants, a market index
-and a blended hybrid index, mirroring the workbook's Nifty 100 TRI + Crisil
-65:35 pairing. We only hold the NIFTY 500 TRI series locally (data/
-benchmark.csv), so additional NSE TRIs are fetched once via jugaad-data and
-cached as data/benchmark_<key>.csv; if a fetch fails the category falls back
-to NIFTY 500 TRI. The Crisil 65:35 hybrid proxy is built locally as
+Benchmark policy: each category is scored against the index the workbook
+uses for it (BENCHMARK_MAP); hybrid categories also get a blended variant,
+mirroring the workbook's Nifty 100 TRI + Crisil 65:35 pairing. NIFTY 500 TRI
+ships as data/benchmark.csv; the other NSE TRIs are fetched once via
+jugaad-data and cached as data/benchmark_<key>.csv. If a needed index cannot
+be loaded the build aborts (no silent NIFTY 500 fallback under the wrong
+label). The Crisil 65:35 hybrid proxy is built locally as
 0.65 x equity index + 0.35 x a liquid-fund NAV proxy from the Parquet,
 rebalanced monthly on returns (crisp 65% equity / 35% bonds hybrid index is
 not freely available).
@@ -114,20 +115,25 @@ CATEGORY_MAP = [
                         "leadership equity", "growth fund"]),
 ]
 
-# category -> (default benchmark, blended alternative benchmark)
+# category -> (default benchmark, blended alternative benchmark). Defaults
+# follow the AUG-2021 workbook's per-category index choice; every key must
+# have a BENCHMARK_LABELS entry and (except the locally built crisil6535 and
+# the bundled nifty500_tri) a JUGAAD_INDICES entry / data/benchmark_<key>.csv.
 BENCHMARK_MAP = {
     "Large Cap Fund": ("nifty100_tri", None),
     "Large & Mid Cap Fund": ("largemid250_tri", None),
     "Mid Cap Fund": ("midcap150_tri", None),
-    "Small Cap Fund": ("smallcap250_tri", None),
+    # Workbook choice (AUG-2021 sheet): small caps are judged against the
+    # Midcap 150 TRI, not the Smallcap 250 TRI.
+    "Small Cap Fund": ("midcap150_tri", None),
     "Flexi Cap Fund": ("nifty500_tri", None),
-    "Multi Cap Fund": ("nifty500_tri", None),
-    "ELSS": ("nifty500_tri", None),
-    "Focussed Fund": ("nifty500_tri", None),
-    "Value Fund": ("nifty500_tri", None),
-    "Contra Fund": ("nifty500_tri", None),
-    "Dividend Yield Fund": ("nifty500_tri", None),
-    "Sectoral/Thematic": ("nifty500_tri", None),
+    "Multi Cap Fund": ("largemid250_tri", None),
+    "ELSS": ("nifty200_tri", None),
+    "Focussed Fund": ("largemid250_tri", None),
+    "Value Fund": ("nifty100_tri", None),
+    "Contra Fund": ("nifty100_tri", None),
+    "Dividend Yield Fund": ("nifty100_tri", None),
+    "Sectoral/Thematic": ("nifty100_tri", None),
     "Aggressive Hybrid Fund": ("nifty100_tri", "crisil6535"),
     # Balanced hybrid (40-60% equity) and multi-asset (>=10% in three asset
     # classes) have no free official index here; the 65:35 proxy is the
@@ -140,6 +146,7 @@ BENCHMARK_MAP = {
 JUGAAD_INDICES = {
     "nifty500_tri": ("NIFTY 500", "NIFTY 500"),
     "nifty100_tri": ("NIFTY 100", "NIFTY 100"),
+    "nifty200_tri": ("NIFTY 200", "NIFTY 200"),
     "largemid250_tri": ("NIFTY LARGEMIDCAP 250", "NIFTY LARGEMIDCAP 250"),
     "midcap150_tri": ("NIFTY MIDCAP 150", "NIFTY MIDCAP 150"),
     "smallcap250_tri": ("NIFTY SMALLCAP 250", "NIFTY SMALLCAP 250"),
@@ -147,6 +154,7 @@ JUGAAD_INDICES = {
 BENCHMARK_LABELS = {
     "nifty500_tri": "NIFTY 500 TRI",
     "nifty100_tri": "NIFTY 100 TRI",
+    "nifty200_tri": "NIFTY 200 TRI",
     "largemid250_tri": "NIFTY LARGEMIDCAP 250 TRI",
     "midcap150_tri": "NIFTY MIDCAP 150 TRI",
     "smallcap250_tri": "NIFTY SMALLCAP 250 TRI",
@@ -396,36 +404,53 @@ def scheme_metrics(code: int, benchmarks: dict[str, pd.Series]) -> list[dict]:
 # --------------------------------------------------------------------------
 # Batch build
 # --------------------------------------------------------------------------
+class BenchmarkUnavailable(RuntimeError):
+    """A category's mapped index series could not be loaded or fetched."""
+
+
 def ensure_benchmarks(needed: set[str]) -> dict[str, pd.Series]:
-    """Load/fetch every benchmark series needed by the universe; fall back to
-    NIFTY 500 TRI for anything unavailable."""
+    """Load/fetch every benchmark series in `needed`.
+
+    Index series are mandatory: a missing one raises BenchmarkUnavailable
+    instead of silently substituting NIFTY 500 TRI under the wrong label.
+    The crisil6535 hybrid proxy is derived (Nifty 100 TRI + liquid-fund
+    proxy) and stays optional; when it cannot be built the hybrid categories
+    simply keep their equity-index row."""
+    needed = set(needed)
+    want_proxy = "crisil6535" in needed
+    index_keys = needed - {"crisil6535"}
+    if want_proxy:
+        index_keys.add("nifty100_tri")  # workbook pairs Crisil 65:35 with Nifty 100
     bench: dict[str, pd.Series] = {}
-    if "crisil6535" in needed:
-        needed = set(needed) - {"crisil6535"}
-    base = load_nifty500_tri()
-    bench["nifty500_tri"] = base
-    crisil_equity = base
-    for key in sorted(needed - {"nifty500_tri"}):
-        s, actual = load_benchmark(key)
+    missing = []
+    for key in sorted(index_keys):
+        if key == "nifty500_tri":
+            bench[key] = load_nifty500_tri()
+            continue
+        s, _label = load_benchmark(key)
         if s is None:
-            crisil_equity = base      # hybrid proxy against the fallback too
-            bench[key] = base
+            missing.append(key)
         else:
-            if key == "nifty100_tri":
-                crisil_equity = s     # workbook pairs Crisil 65:35 with Nifty 100
             bench[key] = s
-    proxy = build_crisil_proxy(crisil_equity)
-    if proxy is not None:
-        bench["crisil6535"] = proxy
+    if missing:
+        raise BenchmarkUnavailable(
+            "benchmark series unavailable (no data/benchmark_<key>.csv and the "
+            "jugaad-data fetch failed): " + ", ".join(missing))
+    if want_proxy:
+        proxy = build_crisil_proxy(bench["nifty100_tri"])
+        if proxy is not None:
+            bench["crisil6535"] = proxy
     return bench
 
 
-def needed_benchmarks() -> set[str]:
+def needed_benchmarks(categories=None) -> set[str]:
+    """Benchmark keys mapped to `categories` (default: every category)."""
+    cats = BENCHMARK_MAP if categories is None else categories
     keys: set[str] = set()
-    for a, b in BENCHMARK_MAP.values():
-        keys.add(a)
-        if b:
-            keys.add(b)
+    for cat in cats:
+        for k in BENCHMARK_MAP.get(cat, ("nifty500_tri",)):
+            if k:
+                keys.add(k)
     return keys
 
 
@@ -444,7 +469,9 @@ def build(limit: int | None = None, codes: list[int] | None = None) -> pd.DataFr
         uni = uni[uni["scheme_code"].isin(codes)]
     if limit:
         uni = uni.head(int(limit))
-    benchmarks = ensure_benchmarks(needed_benchmarks())
+    # Exactly the series this universe's categories are mapped to (all of
+    # them for a full build), so each fund is scored against its own index.
+    benchmarks = ensure_benchmarks(needed_benchmarks(set(uni["category"])))
     frames = []
     for i, r in uni.iterrows():
         bench = scheme_benchmarks(r.category, benchmarks)
@@ -456,6 +483,7 @@ def build(limit: int | None = None, codes: list[int] | None = None) -> pd.DataFr
             frames.append(pd.DataFrame(rows))
     result = pd.concat(frames, ignore_index=True)
     result["nav_as_of"] = nav_history.latest_nav_date()
+    result.attrs["benchmarks_loaded"] = sorted(benchmarks)
     # Daily readers continue to see the last complete build while this runs.
     pending = SCREENER_PARQUET + ".pending"
     try:

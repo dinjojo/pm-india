@@ -16,7 +16,7 @@ from core.models import Account, Asset, GoalPlan, Holding, RetirementSettings, T
 from core.portfolio import portfolio_view, refresh_holdings
 from dataclasses import replace
 
-from core.goals import (one_time_goal, recurring_goal, retirement_plan, goal_scenarios,
+from core.goals import (glide_text, one_time_goal, recurring_goal, retirement_plan, goal_scenarios,
                         sip_affordability, young_earner_advice, goal_progress,
                         recent_monthly_investing)
 from core.report_grouping import holdings_report, tax_report
@@ -216,7 +216,8 @@ def _compute(plan) -> dict:
                                       ("Cost in the goal year", f"₹{r.future_cost:,.0f}"),
                                       ("Your earmarked money by then", f"₹{r.fv_current:,.0f}"),
                                       ("Corpus still needed", f"₹{r.net_corpus:,.0f}"),
-                                      ("Suggested equity share", f"{r.equity_alloc_pct}%")]}
+                                      ("Suggested equity share", glide_text(r).replace("equity ", "", 1)
+                                       + (" (glide path)" if len(set(r.glide_path)) > 1 else ""))]}
     if plan.kind == plan.Kind.RECURRING:
         kw = dict(annual_cost_today=float(plan.annual_cost or 0),
                   years_until_start=float(plan.years_until_start or 0),

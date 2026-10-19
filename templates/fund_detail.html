@@ -4,7 +4,7 @@
 {% block content %}
 <div class="flex flex-wrap items-baseline justify-between gap-3">
   <div>
-    <h1 class="text-2xl font-semibold">{{ s.name }}</h1>
+    <h1 class="page-title">{{ s.name }}</h1>
     <p class="text-stone-800 text-sm mt-1">
       {{ s.fund_house }} · {{ s.category }} · {{ s.type }}
       {% if s.inception %} · since {{ s.inception }}{% endif %}
@@ -14,7 +14,7 @@
   <div class="flex flex-wrap items-center gap-4">
   <a href="{% url 'scheme_analytics' s.code %}" class="text-sm font-medium text-emerald-800 hover:underline">Full analytics →</a>
   <a href="{% url 'returns_calculator' %}{% if s.returns.5Y is not None %}?rate={{ s.returns.5Y|floatformat:1 }}{% endif %}" class="text-sm font-medium text-emerald-800 hover:underline">Returns calculator →</a>
-  <a href="{% url 'add_investment' %}" class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Add transaction</a>
+  <a href="{% url 'add_investment' %}" class="btn btn-primary">Add transaction</a>
   </div>
 </div>
 

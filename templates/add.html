@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Add Investment{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold mb-1">{% if existing %}Add a transaction to {{ existing.name }}{% else %}Add Investment{% endif %}</h1>
-<p class="text-stone-500 mb-6 text-sm">
+<h1 class="page-title">{% if existing %}Add a transaction to {{ existing.name }}{% else %}Add Investment{% endif %}</h1>
+<p class="page-lede mb-6">
   {% if existing %}Record a buy, SIP, redemption, deposit, or withdrawal — pick what fits this investment.{% else %}
   Works for every asset class: mutual funds, stocks, crypto, SGB, gold — plus balance-type schemes like PPF, EPF, NPS, and FDs where you track deposits and the current balance.{% endif %}
 </p>
 
 {% if error %}<div class="mb-4 rounded-lg bg-red-50 text-red-800 px-4 py-2 text-sm" role="alert">{{ error }}</div>{% endif %}
 
-<form method="post" class="bg-white rounded-xl border border-stone-200 p-6 max-w-2xl">
+<form method="post" class="card p-5 max-w-2xl">
   {% csrf_token %}
 
   {% if not existing %}
   <div class="grid md:grid-cols-2 gap-4">
     <div>
-      <label for="id_asset_type" class="block text-sm font-medium text-stone-600 mb-1">Asset class</label>
+      <label for="id_asset_type" class="block text-sm font-medium text-stone-800 mb-1">Asset class</label>
       <select id="id_asset_type" name="asset_type" required
               class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600"
               onchange="toggleMode(this.value)">
@@ -25,18 +25,18 @@
       </select>
     </div>
     <div>
-      <label for="id_name" class="block text-sm font-medium text-stone-600 mb-1">Name…</label>
+      <label for="id_name" class="block text-sm font-medium text-stone-800 mb-1">Name…</label>
       <input id="id_name" name="name" required autocomplete="off" placeholder="e.g. PPF — SBI, Parag Parikh Flexi Cap…"
              class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
     </div>
     <div id="identifier_field">
-      <label for="id_identifier" class="block text-sm font-medium text-stone-600 mb-1">Identifier (ISIN / symbol / coin id)…</label>
+      <label for="id_identifier" class="block text-sm font-medium text-stone-800 mb-1">Identifier (ISIN / symbol / coin id)…</label>
       <input id="id_identifier" name="identifier" autocomplete="off" placeholder="e.g. INF879O01027…"
              class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
-      <p class="text-xs text-stone-400 mt-1" id="identifier_hint">Enables automatic daily pricing. Leave blank for balance-type schemes.</p>
+      <p class="text-xs text-stone-800 mt-1" id="identifier_hint">Enables automatic daily pricing. Leave blank for balance-type schemes.</p>
     </div>
     <div>
-      <label for="id_isin" class="block text-sm font-medium text-stone-600 mb-1">ISIN (optional)…</label>
+      <label for="id_isin" class="block text-sm font-medium text-stone-800 mb-1">ISIN (optional)…</label>
       <input id="id_isin" name="isin" autocomplete="off" class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
     </div>
   </div>
@@ -44,14 +44,14 @@
 
   <div class="grid md:grid-cols-2 gap-4 mt-4">
     <div>
-      <label for="id_account" class="block text-sm font-medium text-stone-600 mb-1">Account</label>
+      <label for="id_account" class="block text-sm font-medium text-stone-800 mb-1">Account</label>
       <select id="id_account" name="account" required
               class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
         {% for a in accounts %}<option value="{{ a.pk }}">{{ a.name }}</option>{% endfor %}
       </select>
     </div>
     <div>
-      <label for="id_kind" class="block text-sm font-medium text-stone-600 mb-1">Transaction</label>
+      <label for="id_kind" class="block text-sm font-medium text-stone-800 mb-1">Transaction</label>
       <select id="id_kind" name="kind"
               class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
         <option value="buy">Buy / SIP / Deposit</option>
@@ -60,31 +60,31 @@
       </select>
     </div>
     <div>
-      <label for="id_date" class="block text-sm font-medium text-stone-600 mb-1">Date</label>
+      <label for="id_date" class="block text-sm font-medium text-stone-800 mb-1">Date</label>
       <input id="id_date" name="date" type="date" required
              class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
     </div>
     <div class="mode-units">
-      <label for="id_quantity" class="block text-sm font-medium text-stone-600 mb-1">Quantity</label>
+      <label for="id_quantity" class="block text-sm font-medium text-stone-800 mb-1">Quantity</label>
       <input id="id_quantity" name="quantity" type="number" step="any" inputmode="decimal" autocomplete="off"
              class="w-full rounded-lg border border-stone-300 px-3 py-2 tnum focus-visible:outline-2 focus-visible:outline-emerald-600">
     </div>
     <div class="mode-units">
-      <label for="id_price" class="block text-sm font-medium text-stone-600 mb-1">Price per unit (₹)</label>
+      <label for="id_price" class="block text-sm font-medium text-stone-800 mb-1">Price per unit (₹)</label>
       <input id="id_price" name="price" type="number" step="any" inputmode="decimal" autocomplete="off"
              class="w-full rounded-lg border border-stone-300 px-3 py-2 tnum focus-visible:outline-2 focus-visible:outline-emerald-600">
     </div>
     <div class="mode-balance hidden">
-      <label for="id_amount" class="block text-sm font-medium text-stone-600 mb-1">Amount (₹)</label>
+      <label for="id_amount" class="block text-sm font-medium text-stone-800 mb-1">Amount (₹)</label>
       <input id="id_amount" name="amount" type="number" step="0.01" inputmode="decimal" autocomplete="off"
              placeholder="e.g. 150000.00…"
              class="w-full rounded-lg border border-stone-300 px-3 py-2 tnum focus-visible:outline-2 focus-visible:outline-emerald-600">
-      <p class="text-xs text-stone-400 mt-1">Deposits and withdrawals only — enter the scheme's current balance later from Holdings.</p>
+      <p class="text-xs text-stone-800 mt-1">Deposits and withdrawals only — enter the scheme's current balance later from Holdings.</p>
     </div>
   </div>
 
   <button type="submit"
-          class="mt-6 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">
+          class="mt-6 btn btn-primary">
     {% if existing %}Save Transaction{% else %}Save Investment{% endif %}
   </button>
 </form>

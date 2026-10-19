@@ -2,20 +2,24 @@
 {% load humanize %}
 {% block title %}Import{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-semibold">Import</h1>
-<p class="text-stone-500 text-sm mt-1 max-w-3xl">
-  Bring in what you already own — parsing happens locally, nothing leaves this machine.
-</p>
+<div class="page-head">
+  <div>
+    <h1 class="page-title">Import</h1>
+    <p class="page-lede">
+      Bring in what you already own — parsing happens locally, nothing leaves this machine.
+    </p>
+  </div>
+</div>
 
-<div class="flex gap-2 mt-6" role="tablist">
-  <a href="#cas" id="tab-cas" onclick="showTab('cas')" class="text-sm px-4 py-2 rounded-lg border bg-white border-stone-200 text-stone-600">Mutual Funds (CAS PDF)</a>
-  <a href="#broker" id="tab-broker" onclick="showTab('broker')" class="text-sm px-4 py-2 rounded-lg border bg-white border-stone-200 text-stone-600">Broker / Distributor (CSV)</a>
-  <a href="#bank" id="tab-bank" onclick="showTab('bank')" class="text-sm px-4 py-2 rounded-lg border bg-white border-stone-200 text-stone-600">Bank Statement (CSV)</a>
+<div class="flex gap-1.5" role="tablist">
+  <a href="#cas" id="tab-cas" onclick="showTab('cas')" class="chip chip-lg">Mutual Funds (CAS PDF)</a>
+  <a href="#broker" id="tab-broker" onclick="showTab('broker')" class="chip chip-lg">Broker / Distributor (CSV)</a>
+  <a href="#bank" id="tab-bank" onclick="showTab('bank')" class="chip chip-lg">Bank Statement (CSV)</a>
 </div>
 
 <div id="pane-cas" class="mt-4">
-  <div class="bg-white rounded-xl border border-stone-200 p-6 max-w-2xl">
-    <p class="text-stone-500 text-sm mb-4">
+  <div class="card p-5 max-w-2xl">
+    <p class="text-stone-800 text-sm mb-4">
       The consolidated account statement from CAMS or KFintech covers <b>all your mutual funds across AMCs</b>,
       plus demat holdings from NSDL/CDSL — one file, every fund.
     </p>
@@ -30,20 +34,20 @@
       <div>
         <label for="id_cas_pdf" class="block text-sm font-medium mb-1">CAS PDF</label>
         <input type="file" id="id_cas_pdf" name="cas_pdf" accept=".pdf" required
-               class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+               class="block w-full text-sm border border-stone-300 rounded-lg h-9 px-3">
       </div>
       <div>
-        <label for="id_cas_pw" class="block text-sm font-medium mb-1">PDF password <span class="text-stone-400">(your PAN, lowercase — or leave blank if none)</span></label>
-        <input type="password" id="id_cas_pw" name="password" class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+        <label for="id_cas_pw" class="block text-sm font-medium mb-1">PDF password <span class="text-stone-800">(your PAN, lowercase — or leave blank if none)</span></label>
+        <input type="password" id="id_cas_pw" name="password" class="block w-full text-sm border border-stone-300 rounded-lg h-9 px-3">
       </div>
-      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import CAS Statement</button>
+      <button class="btn btn-primary">Import CAS Statement</button>
     </form>
   </div>
 </div>
 
 <div id="pane-broker" class="mt-4 hidden">
-  <div class="bg-white rounded-xl border border-stone-200 p-6 max-w-3xl">
-    <p class="text-stone-500 text-sm mb-4">
+  <div class="card p-5 max-w-3xl">
+    <p class="text-stone-800 text-sm mb-4">
       Export your holdings from the provider below and upload the CSV. Columns are matched automatically;
       re-importing the same file never creates duplicates.
     </p>
@@ -64,21 +68,21 @@
                 class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
           {% for p in providers %}<option value="{{ p.key }}">{{ p.name }}</option>{% endfor %}
         </select>
-        <p class="text-xs text-stone-400 mt-1" id="provider_help"></p>
+        <p class="text-xs text-stone-800 mt-1" id="provider_help"></p>
       </div>
       <div>
         <label for="id_csv" class="block text-sm font-medium mb-1">Holdings CSV</label>
         <input type="file" id="id_csv" name="csv_file" accept=".csv" required
-               class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+               class="block w-full text-sm border border-stone-300 rounded-lg h-9 px-3">
       </div>
-      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import Holdings CSV</button>
+      <button class="btn btn-primary">Import Holdings CSV</button>
     </form>
   </div>
 </div>
 
 <div id="pane-bank" class="mt-4 hidden">
-  <div class="bg-white rounded-xl border border-stone-200 p-6 max-w-3xl">
-    <p class="text-stone-500 text-sm mb-4">
+  <div class="card p-5 max-w-3xl">
+    <p class="text-stone-800 text-sm mb-4">
       Upload a CSV/TSV statement export — every credit becomes a deposit, every debit a withdrawal,
       and the closing balance sets the account's value. Formats auto-detected: HDFC, ICICI, Yes Bank, or generic.
     </p>
@@ -110,9 +114,9 @@
       <div>
         <label for="id_bank_csv" class="block text-sm font-medium mb-1">Statement CSV</label>
         <input type="file" id="id_bank_csv" name="csv_file" accept=".csv,.txt,.tsv" required
-               class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+               class="block w-full text-sm border border-stone-300 rounded-lg h-9 px-3">
       </div>
-      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import Bank Statement</button>
+      <button class="btn btn-primary">Import Bank Statement</button>
     </form>
   </div>
 </div>
@@ -125,11 +129,9 @@ function showTab(which) {
   document.getElementById('pane-cas').classList.toggle('hidden', which !== 'cas');
   document.getElementById('pane-broker').classList.toggle('hidden', which !== 'broker');
   document.getElementById('pane-bank').classList.toggle('hidden', which !== 'bank');
-  const active = 'bg-emerald-600 text-white border-emerald-600';
-  const idle = 'bg-white border-stone-200 text-stone-600';
+  // .chip[aria-selected="true"] carries the selected style.
   ['cas','broker','bank'].forEach(t => {
-    const el = document.getElementById('tab-' + t);
-    el.className = 'text-sm px-4 py-2 rounded-lg border ' + (t === which ? active : idle);
+    document.getElementById('tab-' + t).setAttribute('aria-selected', t === which ? 'true' : 'false');
   });
   const h = document.getElementById('provider_help');
   const sel = document.getElementById('id_provider');
