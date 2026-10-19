@@ -140,6 +140,17 @@ Deep read of `AUG-2021-freefincal-Equity-mutual-fund-outperformance-macro-screen
 4. **Results table**: fund, category, benchmark, window counts (number of rolling windows, so the user sees how much history backs each score), the three consistency scores, excess return and excess risk. Sortable, with consistency scores colored. Show the window count prominently; a 77 percent score over 30 windows means something different from one over 500.
 5. **On-screen calculation basis**, per the earlier freefincal finding: "monthly rolls since Apr 2006, vs Nifty Midcap 150 TRI" stated above the table, and the standing caveats: consistency is not a probability of future outperformance, and read upside and downside separately.
 
+### Macro and formula verification (checked with olevba + column consistency tests)
+
+- The VBA is 15 filter macros and nothing else. RO macros filter fields 7/13/19/25/31 (outperformance consistency) against thresholds B3:B7, UP macros filter fields 8/14/20/26/32 against B15:B19, DC macros filter fields 9/15/21/27/33 against B9:B13, Category and Benchmark macros filter columns A and B against the dropdowns, and one macro clears everything. All read their thresholds live from Screener Inputs. No calculation anywhere. Confirmed correct as filters.
+- The **ExcessReturn macro applies all five windows simultaneously**: for every window it requires excess return > 0 AND excess risk < 0 (fields 6,9; 12,15; 18,21; 24,27; 30,33). That is stricter than a per-window screen: a fund must have beaten its benchmark with lower volatility in 1, 2, 3, 4 and 5 year windows at the same time. In the web app this should be a per-window or all-windows option, not silently all-windows.
+- **Real macro bug found**: the RO macros filter range `$A$1:$AG$1298` but the UP/DC macros filter `$A$1:$AG$298`. The Results sheet holds 359 data rows, so the upside/downside filters silently ignore rows 299 to 360 whenever they are applied after a fresh full range. Two different AutoFilter ranges on one sheet also clobber each other. In the web build this is one more reason the filter is a single query, not per-column buttons.
+- The Results and Excess Return cells are **pasted values, not formulas**; the computation lives in his companion rolling-returns tools. Verified internal consistency of the values instead:
+  - Consistency score = outperformance count / window count holds in 351 of 359 rows (tolerance 1e-9).
+  - 8 rows deviate: 6 funds have 3 to 4 fewer fund rolling windows than index windows (missing month-end NAVs), and 2 SBI funds have scores off by about 0.0003 from count/count. These are month-alignment data artifacts, not formula errors, but they confirm the denominator must be the fund's own window count, which the mismatches show he did not always apply.
+  - Excess Return sheet: excess return = fund minus benchmark and excess risk = fund stdev minus index stdev hold exactly in all 359 rows, zero violations.
+  - All upside/downside consistency values lie within [0, 1].
+
 ### What we deliberately change from the workbook
 
 - No macros, no 8,000-row flat Results dump: a queryable table and a filtered view.
