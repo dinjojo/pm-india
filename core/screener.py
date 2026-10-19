@@ -63,13 +63,26 @@ SKIP_KEYWORDS = [
     "gold", "silver", "debt", "gilt", "income fund", "liquid", "bond",
     "money maker", "treasury", "savings fund", "conservative hybrid",
     "equity savings", "dynamic asset allocation", "balanced advantage",
+    # Solution-oriented schemes (SEBI's own category, mixed equity/debt plans
+    # under one name): not equity/hybrid in the freefincal sense.
+    "children", "retirement",
+    # Overseas equity: cannot be judged against an Indian TRI.
+    "global", "international", "overseas", "offshore", "off-shore", "feeder",
+    "us equity", "us bluechip", "japan", "asian equity", "asia pacific",
+    "brazil", "china", "europe", "emerging market", "nasdaq",
 ]
+# Substrings removed before keyword matching: AMFI keeps a scheme's previous
+# name in brackets ("Groww ELSS Tax Saver Fund (formerly known as Indiabulls
+# Tax Savings Fund)") and the old name must not veto the current one.
+_FORMERLY = ("(formerly known as", "(formerly")
 
 CATEGORY_MAP = [
     ("Aggressive Hybrid Fund",
-     ["aggressive hybrid", "equity hybrid", "equity & bond", "equity and bond",
-      "balanced fund", "hybrid equity"]),
-    ("Multi Cap Fund", ["multi cap", "multicap"]),
+     ["aggressive hybrid", "aggresive hybrid", "equity hybrid", "equity & bond",
+      "equity and bond", "balanced fund", "hybrid equity"]),
+    ("Balanced Hybrid Fund", ["balanced hybrid", "balance hybrid", "balanced hyrbrid"]),
+    ("Multi Asset Allocation Fund", ["multi asset", "multi-asset"]),
+    ("Multi Cap Fund", ["multi cap", "multicap", "multi-cap"]),
     ("Large & Mid Cap Fund", ["large and mid", "large & mid", "largemidcap",
                               "core equity", "emerging leaders"]),
     ("Large Cap Fund", ["large cap", "largecap", "bluechip", "top 100",
@@ -81,15 +94,23 @@ CATEGORY_MAP = [
     ("Focussed Fund", ["focused", "focussed"]),
     ("Value Fund", ["value fund", "value discovery", "value & contrast"]),
     ("Contra Fund", ["contra"]),
-    ("Flexi Cap Fund", ["flexi cap", "flexicap", "flexible", "equity fund",
-                        "opportunities fund", "emerging equity", "equity opportunities",
-                        "leadership equity", "growth fund"]),
+    ("Flexi Cap Fund", ["flexi cap", "flexicap"]),
+    # Sectoral before the generic Flexi fallbacks below, otherwise "SBI
+    # Healthcare Opportunities Fund" lands in Flexi Cap via "opportunities fund".
     ("Sectoral/Thematic", ["sector", "thematic", "pharma", "health", "banking",
                            "financial", "technology", "tech fund", "digital",
-                           "infrastructure", "consumption", "psu", "manufacturing",
+                           "infrastructure", "infra fund", "build india",
+                           "consumption", "consumer", "psu", "manufactur",
                            "transport", "real estate", "energy", "auto", "metal",
                            "fmcg", "innovation", "special opportunit", "business cycle",
-                           "quant", "esg", "housing", "rural", "exports"]),
+                           "quant fund", "esg", "housing", "rural", "exports",
+                           "services fund", "mnc", "comma fund", "commodities",
+                           "t.i.g.e.r", "ipo fund", "ethical", "shariah", "momentum",
+                           "quality fund", "minimum variance", "multi-factor",
+                           "multi factor", "conglomerate", "defence", "pioneer"]),
+    ("Flexi Cap Fund", ["flexible", "equity fund", "opportunities fund",
+                        "emerging equity", "equity opportunities",
+                        "leadership equity", "growth fund"]),
 ]
 
 # category -> (default benchmark, blended alternative benchmark)
@@ -107,6 +128,11 @@ BENCHMARK_MAP = {
     "Dividend Yield Fund": ("nifty500_tri", None),
     "Sectoral/Thematic": ("nifty500_tri", None),
     "Aggressive Hybrid Fund": ("nifty100_tri", "crisil6535"),
+    # Balanced hybrid (40-60% equity) and multi-asset (>=10% in three asset
+    # classes) have no free official index here; the 65:35 proxy is the
+    # closest blended yardstick, NIFTY 500 TRI the pure-equity alternative.
+    "Balanced Hybrid Fund": ("crisil6535", "nifty500_tri"),
+    "Multi Asset Allocation Fund": ("crisil6535", "nifty500_tri"),
 }
 
 # key -> jugaad-data index_tri_raw(name, tri_name) parameters
@@ -250,6 +276,12 @@ def build_crisil_proxy(equity: pd.Series) -> pd.Series | None:
 # --------------------------------------------------------------------------
 def categorize(name: str) -> str | None:
     n = name.lower()
+    for marker in _FORMERLY:
+        i = n.find(marker)
+        if i >= 0:
+            j = n.find(")", i)
+            n = n[:i] + (n[j + 1:] if j >= 0 else "")
+            break
     if any(k in n for k in SKIP_KEYWORDS):
         return None
     for cat, kws in CATEGORY_MAP:
@@ -263,16 +295,22 @@ def universe() -> pd.DataFrame:
     con = nav_history._connect()
     df = con.execute(
         """
-        SELECT scheme_code, max(scheme_name) AS scheme_name, min(date) AS first_date,
-               max(date) AS last_date, count(*) AS n
+        SELECT scheme_code, arg_max(scheme_name, date) AS scheme_name,
+               min(date) AS first_date, max(date) AS last_date, count(*) AS n
         FROM read_parquet(?)
         GROUP BY scheme_code
-        HAVING count(*) >= ? AND min(date) <= ?
+        HAVING count(*) >= ?
         """,
-        [nav_history.NAV_PARQUET, MIN_DAILY_POINTS, str(date(2019, 1, 1))],
+        [nav_history.NAV_PARQUET, MIN_DAILY_POINTS],
     ).fetchdf()
-    latest = pd.to_datetime(df["last_date"]).max()
-    df = df[pd.to_datetime(df["last_date"]) >= latest - pd.Timedelta(days=STALE_DAYS)]
+    last = pd.to_datetime(df["last_date"])
+    latest = last.max()
+    # History gate tied to MIN_MONTHS (was a fixed 2019-01-01, which silently
+    # dropped every fund launched 2019-2020 that already has 70+ months).
+    # scheme_metrics() still enforces MIN_MONTHS on the benchmark-aligned series.
+    cutoff = latest - pd.DateOffset(months=MIN_MONTHS + 1)
+    df = df[(last >= latest - pd.Timedelta(days=STALE_DAYS))
+            & (pd.to_datetime(df["first_date"]) <= cutoff)]
     df["category"] = df["scheme_name"].map(categorize)
     df = df[df["category"].notna()].copy()
     df["scheme_code"] = df["scheme_code"].astype(int)
@@ -426,15 +464,11 @@ def build(limit: int | None = None, codes: list[int] | None = None) -> pd.DataFr
 SCORE_COLS = ["ro", "up", "dc"]
 
 
-def query(category: str | None, benchmark: str | None, window: str,
-          outperf_min: float | None, upside_min: float | None,
-          downside_min: float | None, mode: str | None) -> pd.DataFrame:
-    """Filtered screener rows; mode='excess' applies the workbook's fourth
-    screen (excess return > 0 and excess risk < 0). Any minimum of None means
-    "no threshold on this ratio"."""
+def _where(category, benchmark, window, outperf_min, upside_min, downside_min,
+           mode) -> tuple[str, list]:
+    """Shared WHERE clause for query() and query_count()."""
     if window not in WINDOWS.values():
         raise ValueError(f"window must be one of {list(WINDOWS.values())}")
-    con = nav_history._connect()
     where = [f"ro{window} IS NOT NULL"]
     params: list = []
     if category:
@@ -451,8 +485,43 @@ def query(category: str | None, benchmark: str | None, window: str,
             if lo is not None:
                 where.append(f"{col}{window} >= ?")
                 params.append(lo)
+    return " AND ".join(where), params
+
+
+def query(category: str | None, benchmark: str | None, window: str,
+          outperf_min: float | None, upside_min: float | None,
+          downside_min: float | None, mode: str | None,
+          limit: int | None = None, offset: int = 0) -> pd.DataFrame:
+    """Filtered screener rows; mode='excess' applies the workbook's fourth
+    screen (excess return > 0 and excess risk < 0). Any minimum of None means
+    "no threshold on this ratio".
+
+    limit=None returns every match (no silent cap). Ordering is total
+    (score, then scheme_code, then benchmark) so limit/offset pages never
+    overlap or skip rows."""
+    where, params = _where(category, benchmark, window, outperf_min,
+                           upside_min, downside_min, mode)
+    con = nav_history._connect()
     sql = (
-        "SELECT * FROM read_parquet(?) WHERE " + " AND ".join(where) +
-        f" ORDER BY ro{window} DESC LIMIT 200"
+        "SELECT * FROM read_parquet(?) WHERE " + where +
+        f" ORDER BY ro{window} DESC, scheme_code ASC, benchmark ASC"
     )
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params = params + [int(limit), max(0, int(offset))]
     return con.execute(sql, [SCREENER_PARQUET] + params).fetchdf()
+
+
+def query_count(category: str | None, benchmark: str | None, window: str,
+                outperf_min: float | None, upside_min: float | None,
+                downside_min: float | None, mode: str | None,
+                distinct_schemes: bool = False) -> int:
+    """Exact number of rows query() would return without a limit, or with
+    distinct_schemes=True the number of distinct schemes among them (a hybrid
+    scheme has one row per benchmark)."""
+    where, params = _where(category, benchmark, window, outperf_min,
+                           upside_min, downside_min, mode)
+    con = nav_history._connect()
+    what = "count(DISTINCT scheme_code)" if distinct_schemes else "count(*)"
+    sql = f"SELECT {what} FROM read_parquet(?) WHERE " + where
+    return int(con.execute(sql, [SCREENER_PARQUET] + params).fetchone()[0])

@@ -45,9 +45,9 @@ BANK_PROVIDERS = [
         markers=[["transactionremarks"], ["depositamount(cr)"]],
         columns={
             "date": ["transaction date", "value date", "date"],
-            "withdrawal": ["withdrawal amount (dr)", "withdrawal amount", "debit"],
-            "deposit": ["deposit amount (cr)", "deposit amount", "credit"],
-            "balance": ["balance", "closing balance"],
+            "withdrawal": ["withdrawal amount (dr)", "withdrawal amount (inr)", "withdrawal amount", "debit"],
+            "deposit": ["deposit amount (cr)", "deposit amount (inr)", "deposit amount", "credit"],
+            "balance": ["balance", "balance (inr)", "closing balance"],
             "details": ["transaction remarks", "narration", "description"],
         },
     ),
@@ -101,13 +101,18 @@ def _pick(row: dict, candidates: list[str]) -> str | None:
 
 
 def _money(text: str | None) -> Decimal | None:
-    """Parse Indian money cells: '1,23,456.00', '(500.00)', '1000 Cr', '₹50'."""
+    """Parse Indian money cells: '1,23,456.00', '(500.00)', '1000 Cr', '₹50'.
+    '(x)', '-x' and an 'x Dr' suffix are negative (an overdrawn balance)."""
     if not text:
         return None
     raw = text.replace("₹", "").replace("Rs.", "").replace("INR", "").strip()
     negative = raw.startswith("(") and raw.endswith(")")
     raw = raw.strip("()").strip()
-    cr_dr = re.sub(r"(?i)\bcr\b\.?|\bdr\b\.?", "", raw).strip()
+    suffix = re.search(r"(?i)(cr|dr)\.?$", raw)
+    if suffix:
+        negative = negative or suffix.group(1).lower() == "dr"
+        raw = raw[:suffix.start()]
+    cr_dr = raw.strip()
     cr_dr = cr_dr.replace(",", "").replace(" ", "")
     if not cr_dr or not re.match(r"^-?\d*\.?\d+$", cr_dr):
         return None
@@ -179,7 +184,8 @@ def import_bank_statement(user: User, csv_bytes: bytes, provider_key: str,
     )
     account, _ = Account.objects.get_or_create(user=user, name=account_name)
 
-    last_balance: Decimal | None = None
+    balances: list[tuple[date, Decimal]] = []  # (row date, balance) in file order
+    found = 0
     rows = list(reader)
     for i, row in enumerate(rows, start=2):
         day_raw = _pick(row, provider.columns["date"])
@@ -187,16 +193,27 @@ def import_bank_statement(user: User, csv_bytes: bytes, provider_key: str,
         if day is None:
             result.skipped += 1
             continue
-        credit = _money(_pick(row, provider.columns["deposit"]))
-        debit = _money(_pick(row, provider.columns["withdrawal"]))
+        credit_raw = _pick(row, provider.columns["deposit"])
+        debit_raw = _pick(row, provider.columns["withdrawal"])
+        credit, debit = _money(credit_raw), _money(debit_raw)
+        bad = [t for t, v in ((credit_raw, credit), (debit_raw, debit))
+               if v is None and t and t.strip(" -–—").lower() not in {"", "na", "n/a", "nil"}]
+        if bad:
+            result.errors.append(f"Row {i}: could not read amount {bad[0]!r}; row skipped.")
+            result.skipped += 1
+            continue
         bal = _money(_pick(row, provider.columns["balance"]))
         if bal is not None:
-            last_balance = bal
+            balances.append((day, bal))
         if not credit and not debit:
             result.skipped += 1
             continue
+        found += 1
         details = _pick(row, provider.columns["details"]) or "Bank transaction"
-        amount = credit or debit
+        # The column says the direction; some exports also sign or bracket
+        # debits ("-500", "(500)"). Store magnitudes — refresh_holdings
+        # subtracts SELL quantities, so a signed debit would ADD to the balance.
+        amount = abs(credit or debit)
         kind = Transaction.Kind.BUY if credit else Transaction.Kind.SELL
 
         ref = hashlib.sha1(
@@ -210,18 +227,28 @@ def import_bank_statement(user: User, csv_bytes: bytes, provider_key: str,
         if created:
             result.transactions_created += 1
 
-    if last_balance is not None:
+    # Closing balance = the chronologically last row. Many banks (ICICI net
+    # banking, most apps) export newest-first, so the file's last row would be
+    # the OPENING balance there.
+    last_balance: Decimal | None = None
+    if balances:
+        newest_first = balances[0][0] > balances[-1][0]
+        last_balance = balances[0][1] if newest_first else balances[-1][1]
         result.closing_balance = last_balance
 
     if not result.transactions_created:
         if not result.errors:
-            result.errors.append("Nothing new here — this statement was already imported.")
+            result.errors.append(
+                "Nothing new here — this statement was already imported." if found
+                else "No transactions found in this file.")
         return result
 
-    # Current value = the statement's final closing balance
+    # Current value = the statement's final closing balance — on THIS user's
+    # account only (the savings Asset row is shared by identifier).
     from core.portfolio import refresh_holdings
     refresh_holdings()
-    for h in Holding.objects.filter(asset=asset):
-        h.current_value = last_balance
-        h.save()
+    if last_balance is not None:
+        for h in Holding.objects.filter(asset=asset, account=account):
+            h.current_value = last_balance
+            h.save()
     return result

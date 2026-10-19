@@ -8,32 +8,125 @@
   <title>{% block title %}Portfolio{% endblock %} · PM India</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..800&display=swap">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2"></script>
 </head>
-<body class="bg-stone-100 text-stone-900 min-h-screen text-[15px]">
+<body class="bg-stone-100 text-stone-900 min-h-screen text-[15px] antialiased">
 {% if user.is_authenticated %}
-<nav class="bg-white border-b border-stone-300 shadow-sm">
-  <div class="max-w-[1500px] mx-auto px-6 h-14 flex items-center gap-6">
-    <a href="{% url 'dashboard' %}" class="font-semibold tracking-tight">PM<span class="text-emerald-700">India</span></a>
-    <a href="{% url 'dashboard' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'dashboard' %}font-semibold text-stone-950{% endif %}">Dashboard</a>
-    <a href="{% url 'holdings' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'holdings' %}font-semibold text-stone-950{% endif %}">Holdings</a>
-    <a href="{% url 'tax' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'tax' %}font-semibold text-stone-950{% endif %}">Tax</a>
-    <a href="{% url 'funds' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'funds' or request.resolver_match.url_name == 'fund_detail' or request.resolver_match.url_name == 'scheme_analytics' %}font-semibold text-stone-950{% endif %}">Funds</a>
-    <a href="{% url 'screener' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'screener' %}font-semibold text-stone-950{% endif %}">Screener</a>
-    <a href="/funds/calculator/" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'returns_calculator' %}font-semibold text-stone-950{% endif %}">Calculator</a>
-    <a href="/tools/portfolio-tools/" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'portfolio_tools' %}font-semibold text-stone-950{% endif %}">Portfolio tools</a>
-    <a href="{% url 'goals' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'goals' or request.resolver_match.url_name == 'goal_detail' or request.resolver_match.url_name == 'goal_create' %}font-semibold text-stone-950{% endif %}">Goals</a>
-    <a href="{% url 'add_investment' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'add_investment' %}font-semibold text-stone-950{% endif %}">Add</a>
-    <a href="{% url 'scan' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'scan' %}font-semibold text-stone-950{% endif %}">Scan</a>
-    <a href="{% url 'import_cas' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'import_cas' %}font-semibold text-stone-950{% endif %}">Import</a>
+{% with n=request.resolver_match.url_name %}
+<nav class="site-nav bg-white border-b border-stone-300 shadow-sm" aria-label="Main">
+  <div class="max-w-[1500px] mx-auto px-6 h-14 flex items-center gap-1">
+    <a href="{% url 'dashboard' %}" class="mr-5 text-[17px] font-bold tracking-tight text-stone-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 rounded">PM<span class="text-emerald-700">India</span></a>
+
+    <a href="{% url 'dashboard' %}" class="nav-link {% if n == 'dashboard' %}is-active{% endif %}" {% if n == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+    <a href="{% url 'holdings' %}" class="nav-link {% if n == 'holdings' %}is-active{% endif %}" {% if n == 'holdings' %}aria-current="page"{% endif %}>Holdings</a>
+    <a href="{% url 'goals' %}" class="nav-link {% if n == 'goals' or n == 'goal_detail' or n == 'goal_create' or n == 'goal_settings' %}is-active{% endif %}" {% if n == 'goals' %}aria-current="page"{% endif %}>Goals</a>
+    <a href="{% url 'tax' %}" class="nav-link {% if n == 'tax' %}is-active{% endif %}" {% if n == 'tax' %}aria-current="page"{% endif %}>Tax</a>
+
+    <span class="mx-2 h-5 w-px bg-stone-300" aria-hidden="true"></span>
+
+    {# Research dropdown #}
+    <div class="relative" data-dropdown>
+      <button type="button" class="nav-link inline-flex items-center gap-1 {% if n == 'funds' or n == 'fund_detail' or n == 'scheme_analytics' or n == 'screener' or n == 'returns_calculator' or n == 'portfolio_tools' %}is-active{% endif %}"
+              aria-expanded="false" aria-haspopup="true" aria-controls="nav-research" data-dropdown-button>
+        Research
+        <svg class="nav-caret h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+      </button>
+      <div id="nav-research" class="nav-panel absolute left-0 top-full z-50 mt-2 hidden w-72 rounded-xl border border-stone-300 bg-white p-1.5 shadow-lg" data-dropdown-panel>
+        <a href="{% url 'funds' %}" class="nav-item {% if n == 'funds' or n == 'fund_detail' or n == 'scheme_analytics' %}is-active{% endif %}" {% if n == 'funds' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Funds</span><span class="nav-item-desc">Browse schemes, NAV history and analytics</span></a>
+        <a href="{% url 'screener' %}" class="nav-item {% if n == 'screener' %}is-active{% endif %}" {% if n == 'screener' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Screener</span><span class="nav-item-desc">Filter and rank funds by metrics</span></a>
+        <a href="/funds/calculator/" class="nav-item {% if n == 'returns_calculator' %}is-active{% endif %}" {% if n == 'returns_calculator' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Calculator</span><span class="nav-item-desc">SIP and lump-sum return projections</span></a>
+        <a href="/tools/portfolio-tools/" class="nav-item {% if n == 'portfolio_tools' %}is-active{% endif %}" {% if n == 'portfolio_tools' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Portfolio tools</span><span class="nav-item-desc">Overlap, allocation and rebalancing</span></a>
+      </div>
+    </div>
+
+    {# Data dropdown #}
+    <div class="relative" data-dropdown>
+      <button type="button" class="nav-link inline-flex items-center gap-1 {% if n == 'add_investment' or n == 'scan' or n == 'import_cas' or n == 'import_broker' or n == 'import_bank' %}is-active{% endif %}"
+              aria-expanded="false" aria-haspopup="true" aria-controls="nav-data" data-dropdown-button>
+        Data
+        <svg class="nav-caret h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+      </button>
+      <div id="nav-data" class="nav-panel absolute left-0 top-full z-50 mt-2 hidden w-72 rounded-xl border border-stone-300 bg-white p-1.5 shadow-lg" data-dropdown-panel>
+        <a href="{% url 'add_investment' %}" class="nav-item {% if n == 'add_investment' %}is-active{% endif %}" {% if n == 'add_investment' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Add investment</span><span class="nav-item-desc">Record a holding or transaction manually</span></a>
+        <a href="{% url 'scan' %}" class="nav-item {% if n == 'scan' %}is-active{% endif %}" {% if n == 'scan' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Scan</span><span class="nav-item-desc">Extract holdings from a statement or screenshot</span></a>
+        <a href="{% url 'import_cas' %}" class="nav-item {% if n == 'import_cas' or n == 'import_broker' or n == 'import_bank' %}is-active{% endif %}" {% if n == 'import_cas' %}aria-current="page"{% endif %}>
+          <span class="block font-medium">Import</span><span class="nav-item-desc">CAS, broker and bank statement files</span></a>
+      </div>
+    </div>
+
     <form method="post" action="{% url 'logout' %}" class="ml-auto">{% csrf_token %}
-      <button class="text-sm text-stone-500 hover:text-stone-800 focus-visible:outline-2 focus-visible:outline-emerald-600">Log out</button>
+      <button class="nav-link">Log out</button>
     </form>
   </div>
 </nav>
+{% endwith %}
+<script>
+(function () {
+  var dropdowns = Array.prototype.slice.call(document.querySelectorAll('[data-dropdown]'));
+  function parts(dd) {
+    return { btn: dd.querySelector('[data-dropdown-button]'), panel: dd.querySelector('[data-dropdown-panel]') };
+  }
+  function items(dd) { return Array.prototype.slice.call(parts(dd).panel.querySelectorAll('a')); }
+  function setOpen(dd, open) {
+    var p = parts(dd);
+    p.btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    p.panel.classList.toggle('hidden', !open);
+  }
+  function isOpen(dd) { return parts(dd).btn.getAttribute('aria-expanded') === 'true'; }
+  function closeAll(except) { dropdowns.forEach(function (d) { if (d !== except) setOpen(d, false); }); }
+
+  dropdowns.forEach(function (dd) {
+    var p = parts(dd);
+    p.btn.addEventListener('click', function () {
+      var open = !isOpen(dd);
+      closeAll(dd);
+      setOpen(dd, open);
+    });
+    p.btn.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        closeAll(dd);
+        setOpen(dd, true);
+        var list = items(dd);
+        (e.key === 'ArrowDown' ? list[0] : list[list.length - 1]).focus();
+      }
+    });
+    p.panel.addEventListener('keydown', function (e) {
+      var list = items(dd), i = list.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+      else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
+      else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
+    });
+    // Close when focus leaves the dropdown (e.g. Tab past the last item).
+    dd.addEventListener('focusout', function (e) {
+      if (e.relatedTarget && !dd.contains(e.relatedTarget)) setOpen(dd, false);
+    });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    dropdowns.forEach(function (dd) {
+      if (isOpen(dd)) {
+        setOpen(dd, false);
+        if (dd.contains(document.activeElement)) parts(dd).btn.focus();
+      }
+    });
+  });
+  document.addEventListener('click', function (e) {
+    dropdowns.forEach(function (dd) { if (!dd.contains(e.target)) setOpen(dd, false); });
+  });
+})();
+</script>
 {% endif %}
 <main class="max-w-[1500px] mx-auto px-6 py-8">
   {% if messages %}

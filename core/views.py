@@ -1,6 +1,6 @@
 import json
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth import login
@@ -90,7 +90,9 @@ def holdings(request):
                           "color": "bg-stone-400"})
     return render(request, "holdings.html",
                   {"pv": view, "groups": groups, "group": group, "group_choices": choices,
-                   "alloc_bar": alloc_bar, "hreport": holdings_report(view, groups)})
+                   "alloc_bar": alloc_bar,
+                   "hreport": holdings_report(view, groups,
+                                              snaps=request.user.value_snapshots.order_by("date"))})
 
 
 @login_required
@@ -159,7 +161,7 @@ def tax(request):
         "deductions_used": deductions_used,
         "deductions_left": deductions_left,
         "deduction_pct": deduction_pct,
-        "treport": tax_report(summaries, summary, unrealized, hide_zero),
+        "treport": tax_report(summaries, summary, unrealized, hide_zero, user=request.user),
     })
 
 

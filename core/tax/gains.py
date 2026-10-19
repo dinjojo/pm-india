@@ -31,6 +31,11 @@ class Gain:
     cost: Decimal
     proceeds: Decimal
     holding_period_days: int
+    # Identity of the lot's source, so UI joins (e.g. starred assets) match the
+    # real Asset row and owner, not a (type, name) string pair that can collide.
+    asset_pk: int | None = None
+    isin: str = ""
+    user_id: int | None = None  # owner of the account the sell was booked in
 
     @property
     def is_long_term(self) -> bool:
@@ -74,7 +79,7 @@ def realized_gains(account_ids=None, fy: str | None = None) -> list[FYTaxSummary
     qs = (
         Transaction.objects.filter(asset__asset_type__in=Asset.EQUITY_LIKE)
         .filter(kind__in=[Transaction.Kind.BUY, Transaction.Kind.SELL])
-        .select_related("asset")
+        .select_related("asset", "account")
         .order_by("date", "id")
     )
     if account_ids:
@@ -101,6 +106,9 @@ def realized_gains(account_ids=None, fy: str | None = None) -> list[FYTaxSummary
                 cost=cost,
                 proceeds=proceeds,
                 holding_period_days=(tx.date - buy.date).days,
+                asset_pk=tx.asset_id,
+                isin=tx.asset.isin,
+                user_id=tx.account.user_id,
             )
             if fy is None or _fy_of(tx.date) == fy:
                 gains[_fy_of(tx.date)].append(g)
@@ -127,6 +135,11 @@ class UnrealizedLot:
     quantity: Decimal
     cost: Decimal
     current: Decimal
+    # Identity (see Gain): the open lot aggregates every remaining buy of one
+    # Asset, so it carries that asset's pk and the owners of those buys.
+    asset_pk: int | None = None
+    isin: str = ""
+    user_ids: frozenset = frozenset()
 
     @property
     def gain(self) -> Decimal:
@@ -152,7 +165,7 @@ def unrealized_lots():
     qs = (
         Transaction.objects.filter(asset__asset_type__in=Asset.EQUITY_LIKE)
         .filter(kind__in=[Transaction.Kind.BUY, Transaction.Kind.SELL])
-        .select_related("asset")
+        .select_related("asset", "account")
         .order_by("date", "id")
     )
     lots: dict[int, list] = defaultdict(list)
@@ -185,6 +198,8 @@ def unrealized_lots():
             asset_name=asset.name, asset_type=asset.asset_type,
             buy_date=buys[0].date, quantity=qty, cost=cost,
             current=current.quantize(Decimal("0.01")),
+            asset_pk=asset_id, isin=asset.isin,
+            user_ids=frozenset(b.account.user_id for b in buys),
         ))
     return sorted(out, key=lambda l: l.gain)
 

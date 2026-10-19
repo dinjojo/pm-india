@@ -21,7 +21,8 @@
     <a href="#overview" class="text-emerald-800 hover:underline">Overview</a>
     {% if treport and treport.fy.rows|length > 1 %}<a href="#years" class="text-emerald-800 hover:underline">By year</a>{% endif %}
     <a href="#gains" class="text-emerald-800 hover:underline">Realised gains</a>
-    <a href="#sell" class="text-emerald-800 hover:underline">Sell today</a>
+    <a href="#sell" class="text-emerald-800 hover:underline">If you sold today</a>
+    {% if treport and unrealized %}<a href="#harvest" class="text-emerald-800 hover:underline">Harvest now</a>{% endif %}
     <a href="#property" class="text-emerald-800 hover:underline">Property</a>
     <a href="#income" class="text-emerald-800 hover:underline">Income &amp; deductions</a>
   </nav>
@@ -29,7 +30,15 @@
 
 {# ---------- Overview ---------- #}
 {% if summary %}
-<div id="overview" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-5 scroll-mt-28">
+<div class="flex items-center gap-3 mt-6">
+  <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-stone-900 text-white text-xs font-semibold">A</span>
+  <div>
+    <h2 class="text-lg font-semibold text-stone-900 leading-tight">Already realised — FY {{ summary.fy }}</h2>
+    <p class="text-xs text-stone-800">Sales you have made. These numbers are locked in and go into your ITR.</p>
+  </div>
+  <div class="flex-1 border-t-2 border-stone-300 ml-2"></div>
+</div>
+<div id="overview" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-3 scroll-mt-28">
   <h2 class="text-sm font-semibold text-stone-900">Tax position — FY {{ summary.fy }}</h2>
   <p class="text-xs text-stone-800 mt-1">
     {% if summary.tax > 0 %}You owe an estimated {{ summary.tax|inr_short }} in capital-gains tax this FY.{% elif summary.ltcg > 0 %}Realised LTCG {{ summary.ltcg|inr_short }} — fully inside the ₹1.25L exemption, so no tax.{% else %}No realised capital gains yet this FY.{% endif %}
@@ -63,6 +72,10 @@
     <div class="h-2.5 bg-stone-200 rounded-full overflow-hidden">
       <div class="h-full {% if exemption_pct >= 100 %}bg-red-600{% else %}bg-sky-600{% endif %}" style="width: {{ exemption_pct }}%"></div>
     </div>
+    {% if treport and unrealized and treport.harvest.fy == summary.fy %}
+    <p class="text-xs text-stone-800 mt-1"><a href="#harvest" class="text-emerald-800 font-medium hover:underline">What if I harvest now? →</a>
+      {% if treport.harvest.losses < 0 %}<span class="tnum">₹{{ treport.harvest.losses|floatformat:0|intcomma }} of losses</span> you could book{% endif %}{% if treport.harvest.losses < 0 and treport.harvest.book_free > 0 %} · {% endif %}{% if treport.harvest.book_free > 0 %}<span class="tnum">₹{{ treport.harvest.book_free|floatformat:0|intcomma }}</span> of LT gains bookable tax-free{% endif %}</p>
+    {% endif %}
   </div>
 
   {# 80C deduction progress #}
@@ -144,6 +157,7 @@
           <td class="px-4 py-2.5 font-medium text-stone-900">
             <a href="#{{ g.slug }}" class="hover:underline" onclick="var d=document.querySelector('#{{ g.slug }} details'); if(d) d.open=true;">{{ g.label }}</a>
             {% if g.starred_count %}<span class="ml-1 text-xs text-amber-800" title="Lots from starred assets">★ {{ g.starred_count }}</span>{% endif %}
+            {% if g.rule %}<p class="text-xs font-normal text-stone-800 mt-0.5 max-w-md">{{ g.rule }}</p>{% endif %}
           </td>
           <td class="px-4 py-2.5 text-right">{{ g.count }}</td>
           <td class="px-4 py-2.5 text-right">₹{{ g.cost|floatformat:0|intcomma }}</td>
@@ -255,15 +269,80 @@
 {% endif %}
 
 {# ---------- Sell today / harvesting ---------- #}
-<div id="sell" class="mt-8 scroll-mt-28">
-  <h2 class="text-sm font-semibold text-stone-900">What you'd realise if you sold today</h2>
+<div id="sell" class="mt-10 scroll-mt-28">
+  <div class="flex items-center gap-3">
+    <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-sky-700 text-white text-xs font-semibold">B</span>
+    <div>
+      <h2 class="text-lg font-semibold text-stone-900 leading-tight">If you sold today — open positions</h2>
+      <p class="text-xs text-stone-800">Nothing here is taxed until you sell. Use it to decide what to sell, hold, or harvest{% if treport %} in FY {{ treport.current_fy }}{% endif %}.</p>
+    </div>
+    <div class="flex-1 border-t-2 border-sky-200 ml-2"></div>
+  </div>
   {% if unrealized %}
+  {% if treport %}{% with h=treport.harvest %}
+  <div id="harvest" class="bg-white rounded-xl border border-stone-300 border-l-4 border-l-sky-700 shadow-sm p-5 mt-4 scroll-mt-28">
+    <h3 class="text-sm font-semibold text-stone-900">What if I harvest now? — FY {{ h.fy }}</h3>
+    <p class="text-xs text-stone-800 mt-0.5">Equity-rate estimate on realised gains so far this FY (STCG ₹{{ h.stcg|floatformat:0|intcomma }}, LTCG ₹{{ h.ltcg|floatformat:0|intcomma }}), with Indian set-off rules.</p>
+
+    <div class="grid md:grid-cols-2 gap-5 mt-4">
+      <div class="space-y-3">
+        <div>
+          <div class="flex justify-between text-xs font-medium text-stone-800 mb-1">
+            <span>₹1.25L exemption — today</span>
+            <span class="tnum">used ₹{{ h.used|floatformat:0|intcomma }} · free ₹{{ h.headroom|floatformat:0|intcomma }}</span>
+          </div>
+          <div class="flex h-3 bg-stone-200 rounded-full overflow-hidden" role="img" aria-label="Exemption today: used {{ h.used_pct|floatformat:0 }}%, bookable {{ h.book_pct|floatformat:0 }}%">
+            <div class="h-full bg-sky-700" style="width: {{ h.used_pct|floatformat:0 }}%"></div>
+            <div class="h-full bg-emerald-500" style="width: {{ h.book_pct|floatformat:0 }}%"></div>
+          </div>
+        </div>
+        {% if h.losses < 0 %}
+        <div>
+          <div class="flex justify-between text-xs font-medium text-stone-800 mb-1">
+            <span>— after harvesting all losses</span>
+            <span class="tnum">used ₹{{ h.used_after|floatformat:0|intcomma }} · free ₹{{ h.headroom_after|floatformat:0|intcomma }}</span>
+          </div>
+          <div class="flex h-3 bg-stone-200 rounded-full overflow-hidden" role="img" aria-label="Exemption after harvesting: used {{ h.used_after_pct|floatformat:0 }}%, bookable {{ h.book_after_pct|floatformat:0 }}%">
+            <div class="h-full bg-sky-700" style="width: {{ h.used_after_pct|floatformat:0 }}%"></div>
+            <div class="h-full bg-emerald-500" style="width: {{ h.book_after_pct|floatformat:0 }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-800">
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-sky-700"></span>Used by realised LTCG</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>Your LT equity gains that fit tax-free</span>
+        </div>
+      </div>
+
+      <ul class="text-sm text-stone-900 space-y-2 tnum">
+        {% if h.losses < 0 %}
+        <li><b>Book losses:</b> ₹{{ h.losses|floatformat:0|intcomma }} available (short-term ₹{{ h.st_loss|floatformat:0|intcomma }}, long-term ₹{{ h.lt_loss|floatformat:0|intcomma }}).
+          {% if h.saving > 0 %}Estimated tax this FY <b>₹{{ h.tax_now|floatformat:0|intcomma }} → ₹{{ h.tax_after|floatformat:0|intcomma }}</b>, saving <b class="positive">₹{{ h.saving|floatformat:0|intcomma }}</b>.
+          {% else %}Saves no tax right now — your realised gains are already untaxed or inside the exemption.{% endif %}
+          {% if h.carry_forward > 0 %}A net loss of ₹{{ h.carry_forward|floatformat:0|intcomma }} carries forward 8 years if you file your ITR on time.{% endif %}
+        </li>
+        {% else %}
+        <li><b>No losses to harvest</b> among open equity, fund or gold lots.</li>
+        {% endif %}
+        {% if h.lt_gain_pool > 0 %}
+        <li><b>Book gains tax-free:</b> you hold ₹{{ h.lt_gain_pool|floatformat:0|intcomma }} of long-term equity/fund gains.
+          {% if h.book_free > 0 %}Selling and rebuying up to ₹{{ h.book_free|floatformat:0|intcomma }} of it now uses the exemption and resets your cost{% if h.losses < 0 and h.book_free_after > h.book_free %} (₹{{ h.book_free_after|floatformat:0|intcomma }} if you harvest losses first){% endif %}.
+          {% else %}The exemption is already used this FY — further LT gains are taxed at 12.5%.{% endif %}
+        </li>
+        {% endif %}
+        {% if h.crypto_loss < 0 %}<li>Crypto losses (₹{{ h.crypto_loss|floatformat:0|intcomma }}) are left out: they can't be set off against any gain.</li>{% endif %}
+        <li class="text-xs text-stone-800">Short-term losses offset STCG and LTCG; long-term losses offset LTCG only. India has no wash-sale rule, but exit loads and STT still apply.</li>
+      </ul>
+    </div>
+  </div>
+  {% endwith %}{% endif %}
+  <h3 class="text-sm font-semibold text-stone-900 mt-6">Open positions by asset type</h3>
   <p class="text-stone-800 text-sm mt-1 tnum">
     Unrealised: short-term {{ harvest.st_unreal|inr_short }},
     long-term {{ harvest.lt_unreal|inr_short }}.
     {% if harvest.headroom > 0 %}You still have {{ harvest.headroom|inr_short }} of tax-free LTCG headroom this FY.{% else %}The ₹1.25L LTCG exemption is fully used this FY.{% endif %}
   </p>
-  {% if harvest.losses %}
+  {% if harvest.losses and not treport %}
   <div class="rounded-xl bg-sky-50 border border-sky-200 p-4 mt-3 text-sm text-sky-900">
     <b>Tax-loss harvesting:</b> selling {% for l in harvest.losses %}{{ l.asset_name }} (₹{{ l.gain|floatformat:0|intcomma }} loss{% if not l.is_long_term %}, short-term{% endif %}){% if not forloop.last %}, {% endif %}{% endfor %}
     would offset realised gains. India has no wash-sale rule — you may rebuy the same fund.
@@ -296,6 +375,7 @@
           <td class="px-4 py-2.5 font-medium text-stone-900">
             <a href="#{{ g.slug }}" class="hover:underline" onclick="var d=document.querySelector('#{{ g.slug }} details'); if(d) d.open=true;">{{ g.label }}</a>
             {% if g.starred_count %}<span class="ml-1 text-xs text-amber-800" title="Lots from starred assets">★ {{ g.starred_count }}</span>{% endif %}
+            {% if g.rule %}<p class="text-xs font-normal text-stone-800 mt-0.5 max-w-md">{{ g.rule }}</p>{% endif %}
           </td>
           <td class="px-4 py-2.5 text-right">{{ g.count }}</td>
           <td class="px-4 py-2.5 text-right">₹{{ g.cost|floatformat:0|intcomma }}</td>

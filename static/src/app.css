@@ -5,13 +5,80 @@
      Never break this mapping across pages. */
   --color-positive: #059669;
   --color-negative: #dc2626;
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  /* Inter: highly legible UI face with true tabular figures and an optical-size
+     axis (display cut kicks in automatically for big KPI numbers). */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.tnum { font-variant-numeric: tabular-nums; }
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    /* cv05: lowercase l with tail, cv08: upper-case i with serifs —
+       disambiguates l / I / 1 in tickers and scheme names. */
+    font-feature-settings: "cv05", "cv08", "calt";
+    font-optical-sizing: auto;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    line-height: 1.55;
+    letter-spacing: -0.003em;
+  }
+  h1, h2, h3, h4 {
+    letter-spacing: -0.012em;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+  h1 { letter-spacing: -0.022em; }
+  /* Small uppercase section labels read better with more tracking. */
+  h2.uppercase, h3.uppercase { letter-spacing: 0.06em; }
+  /* Tables: all figures line up in columns. */
+  table { font-variant-numeric: tabular-nums; }
+  th { letter-spacing: 0.01em; }
+}
+
+.tnum { font-variant-numeric: tabular-nums slashed-zero; }
+
+/* Big KPI numbers: tighter tracking + semibold display treatment. */
+.tnum:is(.text-xl, .text-2xl, .text-3xl, .text-4xl) {
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  font-feature-settings: "cv05", "cv08", "tnum", "zero";
+}
 
 .positive { color: var(--color-positive); }
 .negative { color: var(--color-negative); }
+
+/* ---------- Top navigation ---------- */
+@layer components {
+  .nav-link {
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium text-stone-700 transition-colors cursor-pointer;
+    @apply hover:bg-stone-100 hover:text-stone-950;
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600;
+  }
+  .nav-link.is-active,
+  .nav-link[aria-expanded="true"] {
+    @apply bg-stone-100 text-stone-950;
+  }
+  .nav-link.is-active {
+    @apply font-semibold;
+    box-shadow: inset 0 -2px 0 var(--color-emerald-600);
+  }
+  .nav-caret { @apply transition-transform; }
+  .nav-link[aria-expanded="true"] .nav-caret { transform: rotate(180deg); }
+
+  .nav-item {
+    @apply block rounded-lg px-3 py-2 text-sm text-stone-900 transition-colors;
+    @apply hover:bg-stone-100 focus-visible:bg-stone-100 focus-visible:outline-2 focus-visible:outline-emerald-600;
+  }
+  .nav-item.is-active {
+    @apply bg-emerald-50 text-emerald-900;
+    box-shadow: inset 3px 0 0 var(--color-emerald-600);
+  }
+  .nav-item-desc {
+    @apply mt-0.5 block text-xs leading-snug text-stone-600;
+  }
+  .nav-item.is-active .nav-item-desc { @apply text-emerald-800; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

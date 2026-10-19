@@ -216,7 +216,7 @@ class DeriskTests(TestCase):
     def test_recurring_post_goal_return_changes_corpus(self):
         kw = dict(annual_cost_today=200_000, years_until_start=8, years_duration=4)
         same = recurring_goal(**kw)
-        safe = recurring_goal(**kw, post_goal_return=6.0)
+        safe = recurring_goal(**kw, post_goal_return=5.0)  # below the 6% liquid rate
         self.assertEqual(same.post_goal_return, same.pre_goal_return)
         self.assertGreater(safe.future_cost, same.future_cost)
 
@@ -229,12 +229,21 @@ class DeriskTests(TestCase):
             cost *= 1.08
         self.assertLess(abs(bal), 10)
 
+    def test_recurring_uses_the_liquid_rate_not_equity(self):
+        # Workbook 4B: recurring goals are saved and spent in an RD / liquid
+        # fund, never in the equity-blended goal portfolio.
+        r = recurring_goal(annual_cost_today=200_000, years_until_start=8, years_duration=4)
+        self.assertEqual(r.pre_goal_return, Assumptions().fixed_return)
+        self.assertEqual(r.post_goal_return, Assumptions().fixed_return)
+        self.assertEqual(r.equity_alloc_pct, 0)
+
     def test_scenarios_offer_derisk_for_goals_only(self):
         one = {s["label"]: s for s in goal_scenarios(kind="one_time", **CAR)}
         self.assertGreater(one["De-risk 3y"]["monthly_sip"], one["Base"]["monthly_sip"])
         rec = [s["label"] for s in goal_scenarios(kind="recurring", annual_cost_today=1e5,
                                                   years_until_start=5, years_duration=4)]
         self.assertIn("De-risk 3y", rec)
+        self.assertEqual(rec.count("Base"), 1)
         ret = [s["label"] for s in goal_scenarios(kind="retirement", current_age=40,
                                                   retire_age=55, monthly_expense=50_000)]
         self.assertNotIn("De-risk 3y", ret)

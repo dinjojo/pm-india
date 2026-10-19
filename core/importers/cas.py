@@ -14,7 +14,7 @@ used):
   longer string-matches descriptions.
 """
 from dataclasses import dataclass, field
-from datetime import date as Date
+from datetime import date as Date, datetime
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -50,12 +50,28 @@ def _d(x) -> Decimal:
     return Decimal(str(x)) if x is not None else Decimal("0")
 
 
-def _date(x) -> Date:
-    return x if isinstance(x, Date) else Date.fromisoformat(str(x)[:10])
+def _date(x) -> Date | None:
+    """casparser dates: date objects (CAMS/KFin rows) or strings — ISO,
+    NSDL '18-Oct-2026', CDSL '18/10/2026' / '18-10-2026'. None if unparseable."""
+    if isinstance(x, Date):
+        return x
+    text = str(x or "").strip()
+    for candidate, fmt in ((text[:10], "%Y-%m-%d"), (text, "%d-%b-%Y"), (text, "%d/%b/%Y"),
+                           (text, "%d/%m/%Y"), (text, "%d-%m-%Y")):
+        try:
+            return datetime.strptime(candidate, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _get_or_create_mf(scheme: str, isin: str, advisor: str | None) -> Asset:
-    is_direct = "direct" in scheme.lower() or not (advisor or "").strip()
+    # advisor=None means "unknown" (demat statements carry no ARN): judge by
+    # the plan name alone instead of assuming no advisor = direct.
+    if advisor is None:
+        is_direct = "direct" in scheme.lower()
+    else:
+        is_direct = "direct" in scheme.lower() or not advisor.strip()
     asset, _ = Asset.objects.get_or_create(
         asset_type=Asset.AssetType.MUTUAL_FUND,
         identifier=isin or f"cas:{scheme}",
@@ -84,10 +100,14 @@ def _get_or_create_bond(name: str, isin: str) -> Asset:
 
 def _add_tx(user_result: CasImportResult, asset: Asset, account: Account, kind, tx_date: Date,
             qty: Decimal, price: Decimal, amount: Decimal, ref: str) -> None:
-    _, created = Transaction.objects.get_or_create(
-        asset=asset, account=account, kind=kind, date=tx_date,
-        quantity=qty, price=price,
-        defaults={"amount": amount, "source": "cas", "external_ref": ref},
+    # Keyed on the per-folio/per-demat-account ref, not on (date, qty, price):
+    # the same scheme bought the same day in two folios (or the same ISIN in
+    # an NSDL and a CDSL account) are distinct positions. update_or_create
+    # also repairs rows written by earlier imports (e.g. signed redemptions).
+    _, created = Transaction.objects.update_or_create(
+        asset=asset, account=account, source="cas", external_ref=ref,
+        defaults={"kind": kind, "date": tx_date, "quantity": qty,
+                  "price": price, "amount": amount},
     )
     if created:
         user_result.transactions_created += 1
@@ -98,30 +118,45 @@ def _import_cams_kfin(cas, result: CasImportResult, account: Account) -> None:
         for scheme in folio.schemes:
             asset = _get_or_create_mf(scheme.scheme, scheme.isin or "", scheme.advisor or "")
             for tx in scheme.transactions:
-                kind = _KIND_MAP.get(getattr(tx.type, "value", str(tx.type)))
+                ttype = getattr(tx.type, "value", str(tx.type))
+                kind = _KIND_MAP.get(ttype)
                 if kind is None:
-                    if getattr(tx.type, "value", str(tx.type)) in _SKIPPED_KINDS:
-                        continue
-                    continue
+                    continue  # taxes / reversals / segregation: no position change
                 qty = _d(tx.units)
                 amount = _d(tx.amount)
+                tx_date = _date(tx.date)
+                if tx_date is None:
+                    result.warnings.append(
+                        f"Folio {folio.folio} · {scheme.scheme}: skipped a {ttype} row "
+                        f"with unreadable date {tx.date!r}.")
+                    continue
                 price = _d(tx.nav)
                 if not price and qty:
                     price = (abs(amount) / abs(qty)).quantize(Decimal("0.0001"))
-                ref = f"cas:{folio.folio}:{scheme.isin or scheme.scheme}:{tx.type.value}:{tx.date}:{qty}:{amount}"
-                _add_tx(result, asset, account, kind, _date(tx.date), qty, price, amount, ref)
+                # Ref keeps casparser's signed values so earlier imports match.
+                ref = f"cas:{folio.folio}:{scheme.isin or scheme.scheme}:{ttype}:{tx.date}:{qty}:{amount}"
+                # casparser signs outflows (redemption / switch-out units and
+                # amount are negative); our kinds carry the direction and
+                # refresh_holdings / tax.gains subtract SELL quantities, so
+                # store magnitudes or a redemption would ADD units.
+                _add_tx(result, asset, account, kind, tx_date, abs(qty), abs(price), abs(amount), ref)
 
 
 def _import_nsdlcdsl(cas, result: CasImportResult, account: Account) -> None:
     """NSDL/CDSL demat statements are holdings snapshots, not transaction
     history: one opening BUY per position, dated at the statement's end."""
-    as_of = _date(cas.statement_period.to) if cas.statement_period else Date.today()
+    # casparser leaves the period as "" when it cannot find it, and NSDL/CDSL
+    # write it as '18-Oct-2026' / '18/10/2026', never ISO.
+    period_to = cas.statement_period.to if cas.statement_period else ""
+    as_of = _date(period_to) or Date.today()
+    if period_to and _date(period_to) is None:
+        result.warnings.append(f"Statement date {period_to!r} unreadable; positions dated today.")
     for acc in cas.accounts:
         tag = f"{acc.dp_id or ''}:{acc.client_id or ''}".strip(":") or acc.name
         for mf in acc.mutual_funds:
             if not mf.balance:
                 continue
-            asset = _get_or_create_mf(mf.name or f"MF {mf.isin}", mf.isin, "")
+            asset = _get_or_create_mf(mf.name or f"MF {mf.isin}", mf.isin, None)
             price = _d(mf.avg_cost) if mf.avg_cost else _d(mf.nav)
             _add_tx(result, asset, account, Transaction.Kind.BUY, as_of,
                     _d(mf.balance), price, _d(mf.total_cost) if mf.total_cost else _d(mf.value),

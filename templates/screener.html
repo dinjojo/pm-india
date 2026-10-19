@@ -71,7 +71,10 @@
 {% endif %}
 
 {% if submitted %}
-<p class="mt-6 text-sm font-semibold text-stone-900">{{ match_count }} fund{{ match_count|pluralize }} matched</p>
+<div class="mt-6 flex flex-wrap items-baseline justify-between gap-2">
+  <p class="text-sm font-semibold text-stone-900">{{ match_count }} fund{{ match_count|pluralize }} matched{% if scheme_count and scheme_count != match_count %} <span class="font-normal text-stone-800">({{ scheme_count }} distinct scheme{{ scheme_count|pluralize }}; hybrids are listed once per benchmark)</span>{% endif %}</p>
+  {% if page and page.paginator.num_pages > 1 %}<p class="text-sm text-stone-800 tnum">Showing {{ page.start_index }}–{{ page.end_index }} of {{ match_count }}</p>{% endif %}
+</div>
 <div class="mt-2 bg-white rounded-xl border border-stone-300 shadow-sm overflow-hidden">
   {% if rows %}
   <div class="overflow-x-auto">
@@ -113,6 +116,23 @@
     </tbody>
   </table>
   </div>
+  {% if page.paginator.num_pages > 1 %}
+  <nav class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-stone-300 text-sm" aria-label="Results pages">
+    <div class="flex gap-2">
+      {% if page.has_previous %}
+      <a href="?{{ page_query }}&amp;page=1" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">« First</a>
+      <a href="?{{ page_query }}&amp;page={{ page.previous_page_number }}" rel="prev" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">‹ Previous</a>
+      {% endif %}
+    </div>
+    <span class="text-stone-800 tnum">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    <div class="flex gap-2">
+      {% if page.has_next %}
+      <a href="?{{ page_query }}&amp;page={{ page.next_page_number }}" rel="next" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">Next ›</a>
+      <a href="?{{ page_query }}&amp;page={{ page.paginator.num_pages }}" class="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-900 hover:bg-stone-100">Last »</a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
   {% else %}
   <p class="px-4 py-8 text-center text-sm text-stone-800">No funds matched. Loosen the minimums or pick a shorter window.</p>
   {% endif %}

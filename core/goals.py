@@ -184,18 +184,21 @@ def recurring_goal(*, annual_cost_today: float, years_until_start: float, years_
                    current_taxfree_fi: float = 0.0, step_up_pct: float = 5.0,
                    derisk_years: float = 0.0, post_goal_return: float | None = None,
                    a: Assumptions | None = None) -> GoalResult:
-    """Step 4B: corpus = PV (at goal start) of a growing annuity of annual costs,
-    then planned like a one-time goal from today.
+    """Step 4B: recurring goals are funded with a sinking fund, not an equity
+    corpus.
 
-    Costs are paid at the start of each year (fees, premiums), so the first
-    payment is due on the goal date: PV is an annuity-due. post_goal_return is
-    the return earned on the corpus while it is being spent (None = the same
-    blended return as before the goal). derisk_years and lumpsum_now behave as
-    in one_time_goal."""
+    The workbook is explicit: "for all these goals, you use a simple RD or
+    sweep in SB acct or liquid fund". So the money earns the fixed-income
+    (liquid / RD) rate both while saving and while spending, and the corpus is
+    the PV of the cost stream discounted at that same rate. Costs are paid at
+    the start of each year (fees, premiums), so the first payment is due on the
+    goal date: PV is an annuity-due. post_goal_return overrides the spend rate
+    (None = the same liquid rate). derisk_years and lumpsum_now behave as in
+    one_time_goal, though de-risking is a no-op once everything is already in
+    fixed income."""
     a = a or Assumptions()
     infl = (inflation_override if inflation_override else a.goal_inflation) / 100
-    eq_w = suggest_equity_weight(flexible, years_until_start + years_duration)
-    ret_pct = _blended(eq_w, a.equity_return, a.fixed_return)
+    ret_pct = a.fixed_return
     post_pct = ret_pct if post_goal_return is None else float(post_goal_return)
     c1 = annual_cost_today * (1 + infl) ** years_until_start
     n, g, r = int(round(years_duration)), infl, post_pct / 100
@@ -218,7 +221,7 @@ def recurring_goal(*, annual_cost_today: float, years_until_start: float, years_
     return GoalResult(future_cost=round(pv), fv_current=round(fv_current),
                       net_corpus=round(net), lumpsum_now=round(max(0.0, lumpsum)),
                       monthly_sip=sip, step_up_pct=step_up_pct,
-                      equity_alloc_pct=round(eq_w * 100), schedule=schedule,
+                      equity_alloc_pct=0, schedule=schedule,
                       pre_goal_return=ret_pct, post_goal_return=post_pct, derisk_years=d,
                       years_to_goal=y, years_to_start=0.0)
 
@@ -232,7 +235,7 @@ def goal_scenarios(*, kind: str, a: Assumptions | None = None, **kwargs) -> list
     Decision variants on the base case: 10% step-up instead of the plan's,
     (retirement only) retiring 3 years later, and (one-time / recurring) de-risking:
     the goal money sits in fixed income for the last 3 years before the goal
-    (recurring: the corpus is also spent from a conservative 25%-equity mix).
+    (recurring money is already all fixed income, so de-risking is a no-op there).
     Returns [{label, monthly_sip, net_corpus, note}].
     """
     a = a or Assumptions()
@@ -251,10 +254,7 @@ def goal_scenarios(*, kind: str, a: Assumptions | None = None, **kwargs) -> list
         late = {**kwargs, "retire_age": int(kwargs.get("retire_age", 50)) + 3}
         variants.append((f"Retire at {late['retire_age']}", a, late))
     else:
-        derisk = {**kwargs, "derisk_years": 3}
-        if kind == "recurring":
-            derisk["post_goal_return"] = _blended(0.25, a.equity_return, a.fixed_return)
-        variants.append(("De-risk 3y", a, derisk))
+        variants.append(("De-risk 3y", a, {**kwargs, "derisk_years": 3}))
 
     out = []
     for label, asm, kw in variants:

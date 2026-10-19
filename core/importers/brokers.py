@@ -12,8 +12,9 @@ so re-importing the same file is idempotent.
 import csv
 import hashlib
 import io
+import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.models import User
@@ -31,10 +32,10 @@ class Provider:
 
     def match(self, headers: set[str]) -> int:
         """How many required columns this provider can resolve (0 = unusable)."""
-        lower = {h.strip().lower().replace(" ", "").replace("_", ""): h for h in headers}
+        lower = {_norm(h) for h in headers}
         hits = 0
         for names in self.columns.values():
-            if any(n.lower().replace(" ", "") in lower for n in names):
+            if any(_norm(n) in lower for n in names):
                 hits += 1
         return hits
 
@@ -46,8 +47,8 @@ PROVIDERS = [
         columns={
             "name": ["symbol", "instrument"],
             "isin": ["isin"],
-            "quantity": ["quantity", "qty"],
-            "avg_price": ["average price", "buy avg", "average cost"],
+            "quantity": ["quantity", "qty", "quantity available"],
+            "avg_price": ["average price", "buy avg", "average cost", "avg cost"],
         },
     ),
     Provider(
@@ -106,7 +107,9 @@ class CsvImportResult:
 
 
 def _norm(h: str) -> str:
-    return h.strip().lower().replace(" ", "").replace("_", "")
+    # Kite writes "Qty." / "Avg. cost"; ICICI-style "(Rs)" suffixes: ignore
+    # spaces, underscores, dots and brackets when matching header names.
+    return re.sub(r"[\s_.()]+", "", (h or "").strip().lower())
 
 
 def _pick(row: dict, candidates: list[str]) -> str | None:
@@ -115,6 +118,15 @@ def _pick(row: dict, candidates: list[str]) -> str | None:
             text = (value or "").strip().replace(",", "").replace("₹", "")
             if text:
                 return text
+    return None
+
+
+def _parse_date(text: str) -> date | None:
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d/%b/%Y", "%d-%b-%Y", "%d %b %Y"):
+        try:
+            return datetime.strptime(text.strip(), fmt).date()
+        except ValueError:
+            continue
     return None
 
 
@@ -162,6 +174,8 @@ def import_holdings_csv(user: User, csv_bytes: bytes, provider_key: str) -> CsvI
             qty = Decimal(qty_raw)
             avg = Decimal(_pick(row, resolved["avg_price"]) or "0")
             isin = _pick(row, resolved["isin"]) or ""
+            if not (qty.is_finite() and avg.is_finite()):  # 'NaN'/'inf' parse but can't compare
+                raise InvalidOperation
         except (InvalidOperation, ArithmeticError):
             result.errors.append(f"Row {i}: could not parse quantity/price for {name!r}.")
             continue
@@ -170,27 +184,32 @@ def import_holdings_csv(user: User, csv_bytes: bytes, provider_key: str) -> CsvI
             continue
 
         day_raw = _pick(row, ["date", "as of date", "holding date"])
-        day = date.today()
-        if day_raw:
-            for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d/%b/%Y", "%d-%b-%Y"):
-                try:
-                    day = date(*[int(x) for x in reversed(day_raw.replace("-", "/").split("/"))]) \
-                        if "/" in day_raw or "-" in day_raw else day
-                    break
-                except (ValueError, TypeError):
-                    continue
+        day = _parse_date(day_raw) if day_raw else None
+        if day_raw and day is None:
+            result.errors.append(f"Row {i}: could not read date {day_raw!r} for {name!r}.")
+            continue
 
+        # Indian MF units carry INF… ISINs (INE… = equity): a Groww/HDFC/Kotak
+        # MF export must land on the same MUTUAL_FUND asset a CAS import uses.
+        asset_type = (Asset.AssetType.MUTUAL_FUND if isin.upper().startswith("INF")
+                      else provider.default_type)
         asset, created = Asset.objects.get_or_create(
-            asset_type=provider.default_type,
+            asset_type=asset_type,
             identifier=isin or f"{provider.key}:{name.lower()[:40]}",
             defaults={"name": name, "isin": isin},
         )
-        # Idempotent re-import: same asset + same day + same source = skip
-        ref = hashlib.sha1(f"{asset.id}:{day}:{qty}:{avg}".encode()).hexdigest()[:16]
+        # Idempotent re-import: a dated row keys on its date; an undated
+        # snapshot (dated today) must not re-add the same position when the
+        # file is imported again on a later day.
+        if day is not None:
+            ref = hashlib.sha1(f"{asset.id}:{day}:{qty}:{avg}".encode()).hexdigest()[:16]
+        else:
+            day = date.today()
+            ref = hashlib.sha1(f"{asset.id}:undated:{qty}:{avg}".encode()).hexdigest()[:16]
         tx, tx_created = Transaction.objects.get_or_create(
-            asset=asset, account=account, kind=Transaction.Kind.BUY, date=day,
+            asset=asset, account=account, kind=Transaction.Kind.BUY,
             source="csv", external_ref=ref,
-            defaults={"quantity": qty, "price": avg},
+            defaults={"quantity": qty, "price": avg, "date": day},
         )
         if created:
             result.holdings_created += 1
