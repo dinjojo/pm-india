@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 class="text-sm font-semibold uppercase tracking-wide text-stone-700">Net worth</h1>
+<p class="text-4xl font-semibold mt-1 tnum text-stone-900">₹{{ pv.total_current|intcomma }}</p>
+<p class="mt-1 text-lg tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">
+  {% if pv.total_gain >= 0 %}▲{% else %}▼{% endif %} ₹{{ pv.total_gain|floatformat:0|intcomma }}
+  {% if pv.total_invested %}({{ pv.total_gain_pct|floatformat:2 }}% of ₹{{ pv.total_invested|intcomma }} invested){% endif %}
+</p>
+{% if pv.xirr %}<p class="text-stone-800 mt-1 tnum">XIRR {{ pv.xirr|floatformat:2 }}%</p>{% endif %}
+<p class="mt-3 text-stone-800">{{ pv.narrative }}</p>
+
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+    <h2 class="text-sm font-semibold text-stone-900">Performance</h2>
+    {% if has_history %}
+    <div class="flex gap-1" role="tablist" aria-label="Chart period">
+      <button data-period="3D"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">3D</button>
+      <button data-period="1W"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">1W</button>
+      <button data-period="1M"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">1M</button>
+      <button data-period="3M"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">3M</button>
+      <button data-period="6M"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">6M</button>
+      <button data-period="1Y"  class="period-chip is-active px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-800 bg-emerald-800 text-white">1Y</button>
+      <button data-period="All" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">All</button>
+    </div>
+    {% endif %}
+  </div>
+  {% if has_history %}
+  <div style="height:190px;position:relative"><canvas id="trend" role="img" aria-label="Compact area chart of portfolio value with period selector"></canvas></div>
+  <p class="text-xs text-stone-700 mt-2">
+    <span id="trend-note">Last 12 months.</span> Points before the first daily snapshot are reconstructed from historical NAVs — early points are estimates.
+  </p>
+  {% else %}
+  <p class="text-stone-700 text-sm">Save an investment or import a statement — the trend appears once history exists.</p>
+  {% endif %}
+</div>
+
+<div class="grid xl:grid-cols-3 gap-6 mt-6 items-start">
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 xl:col-span-2 overflow-x-auto min-w-0">
+    <h2 class="text-sm font-semibold text-stone-900 mb-3">Diversification by asset class</h2>
+    {% if pv.class_breakdown %}
+    <table class="w-full text-sm tnum">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2 font-semibold">Asset class</th>
+          <th class="py-2 font-semibold text-right">Invested</th>
+          <th class="py-2 font-semibold text-right">Current</th>
+          <th class="py-2 font-semibold text-right">Return</th>
+          <th class="py-2 font-semibold text-right">Weight</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in pv.class_breakdown %}
+        <tr class="border-t border-stone-200">
+          <td class="py-2 text-stone-900">{{ c.label }}{% if c.manual %} <span class="text-xs text-amber-800 bg-amber-100 rounded px-1.5 py-0.5" title="Value entered manually — no price feed for this asset class">manual</span>{% endif %}</td>
+          <td class="py-2 text-right text-stone-900">₹{{ c.invested|floatformat:0|intcomma }}</td>
+          <td class="py-2 text-right text-stone-900">₹{{ c.current|floatformat:0|intcomma }}</td>
+          <td class="py-2 text-right {% if c.gain_pct >= 0 %}positive{% else %}negative{% endif %}">{{ c.gain_pct|floatformat:1 }}%</td>
+          <td class="py-2 text-right text-stone-900">{{ c.weight|floatformat:1 }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="text-stone-700 text-sm">No holdings yet.</p>{% endif %}
+  </div>
+
+  <div class="xl:col-span-1 min-w-0 flex flex-col gap-6">
+    <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
+      <h2 class="text-sm font-semibold text-stone-900 mb-3">Where your money sits</h2>
+      {% if pv.allocation %}<div style="height:220px;position:relative"><canvas id="alloc" role="img" aria-label="Doughnut chart of allocation by asset class"></canvas></div>{% else %}
+        <p class="text-stone-700 text-sm">Add an investment to see your allocation.</p>{% endif %}
+    </div>
+
+    <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
+      <h2 class="text-sm font-semibold text-stone-900 mb-3">Top positions</h2>
+      {% if pv.holdings %}
+    <table class="w-full text-sm">
+      <tbody class="tnum">
+      {% for h in pv.holdings|slice:":8" %}
+        <tr class="border-t border-stone-200">
+          <td class="py-2 pr-2 truncate max-w-52 font-medium text-stone-900">{% if h.priority %}<span class="text-amber-600" title="Priority">★</span> {% endif %}{{ h.name }}</td>
+          <td class="py-2 text-right text-stone-900">₹{{ h.current|floatformat:0|intcomma }}</td>
+          <td class="py-2 text-right {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">{{ h.gain_pct|floatformat:1 }}%</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="text-stone-700 text-sm">No holdings yet.</p>{% endif %}
+  </div>
+</div>
+
+{% if has_history %}
+<script>
+const trend = {{ trend|safe }};
+const ctx = document.getElementById('trend');
+const DAYS = {'3D': 3, '1W': 7, '1M': 31, '3M': 92, '6M': 183, '1Y': 366, 'All': 1e9};
+const NOTE = {'3D': 'Last 3 days.', '1W': 'Last week.', '1M': 'Last month.', '3M': 'Last 3 months.', '6M': 'Last 6 months.', '1Y': 'Last 12 months.', 'All': 'Full history.'};
+const fmt = v => '₹' + (v >= 10000000 ? (v/10000000).toFixed(2) + ' Cr' : v >= 100000 ? (v/100000).toFixed(1) + 'L' : v >= 1000 ? (v/1000).toFixed(0) + 'k' : v);
+const grad = c => { const g = c.createLinearGradient(0, 0, 0, 190);
+  g.addColorStop(0, 'rgba(5,150,105,0.18)'); g.addColorStop(1, 'rgba(5,150,105,0)'); return g; };
+let chart;
+function render(period) {
+  const days = DAYS[period];
+  const from = new Date(Date.now() - days * 864e5);
+  const i0 = Math.max(0, trend.dates.findIndex(d => new Date(d) >= from));
+  const dates = trend.dates.slice(i0), cur = trend.current.slice(i0), inv = trend.invested.slice(i0);
+  // Sparse data (few daily snapshots in range): draw visible dots so a 1–2
+  // point series isn't an empty plot. Daily snapshots fill this in over time.
+  const sparse = dates.length < 10;
+  const data = {
+    labels: dates.map(d => new Date(d).toLocaleDateString('en-IN', {day: DAYS[period] <= 92 ? 'numeric' : undefined, month: 'short', year: DAYS[period] > 92 ? '2-digit' : undefined})),
+    datasets: [
+      { label: 'Value', data: cur, borderColor: '#059669', borderWidth: 2,
+        backgroundColor: grad(ctx.getContext('2d')), fill: true, tension: 0.3,
+        pointRadius: sparse ? 3 : 0, pointHoverRadius: 4 },
+      { label: 'Invested', data: inv, borderColor: '#94a3b8', borderWidth: 1, borderDash: [4,4],
+        fill: false, tension: 0.3, pointRadius: sparse ? 2 : 0, pointHoverRadius: 0 },
+    ]
+  };
+  const opts = {
+    animation: false, maintainAspectRatio: false, normalized: true,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#44403c' } },
+      y: { border: { display: false }, grid: { color: '#f5f5f4' },
+           position: 'right', ticks: { maxTicksLimit: 4, font: { size: 10 }, color: '#44403c', callback: fmt } }
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: { backgroundColor: '#1c1917', padding: 10, displayColors: true, boxWidth: 8, boxHeight: 8,
+        callbacks: { label: c => `${c.dataset.label}: ${fmt(c.parsed.y)}` } }
+    }
+  };
+  if (chart) { chart.data = data; chart.update('none'); }
+  else chart = new Chart(ctx, { type: 'line', data, options: opts });
+  document.getElementById('trend-note').textContent = NOTE[period];
+}
+document.querySelectorAll('.period-chip').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.period-chip').forEach(b => {
+    b.classList.remove('is-active', 'border-emerald-800', 'bg-emerald-800', 'text-white');
+    b.classList.add('border-stone-300', 'text-stone-800');
+  });
+  btn.classList.add('is-active', 'border-emerald-800', 'bg-emerald-800', 'text-white');
+  btn.classList.remove('border-stone-300', 'text-stone-800');
+  render(btn.dataset.period);
+}));
+render('1Y');
+</script>
+{% endif %}
+{% if pv.allocation %}
+<script>
+new Chart(document.getElementById('alloc'), {
+  type: 'doughnut',
+  data: {
+    labels: {{ alloc_labels|safe }},
+    datasets: [{ data: {{ alloc_values|safe }},
+      backgroundColor: ['#059669','#0ea5e9','#f59e0b','#8b5cf6','#ef4444','#64748b','#14b8a6','#f97316'] }]
+  },
+  options: { animation: false, maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } }
+});
+</script>
+{% endif %}
+{% endblock %}

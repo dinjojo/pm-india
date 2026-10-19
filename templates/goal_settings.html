@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Goal assumptions{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">Planning assumptions</h1>
+    <p class="text-stone-800 text-sm mt-1">
+      The Settings sheet of the Freefincal workbook. Every plan uses these by default; a retirement plan's own inflation field still overrides them for that plan.
+    </p>
+  </div>
+  <a href="{% url 'goals' %}" class="text-sm font-medium text-emerald-800 hover:underline">← All goals</a>
+</div>
+
+<form method="post" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 max-w-2xl grid gap-4">
+  {% csrf_token %}
+  <div class="grid grid-cols-2 gap-4">
+    {% for name, label, value, lo, hi in fields %}
+    <label class="grid gap-1 text-sm font-medium text-stone-900">{{ label }}
+      <input name="{{ name }}" type="number" min="{{ lo }}" max="{{ hi }}" step="{% if name == 'life_expectancy' %}1{% else %}0.1{% endif %}" required value="{{ value|floatformat:'-2' }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    {% endfor %}
+  </div>
+  <p class="text-xs text-stone-800">Workbook defaults: inflation 6% before and during retirement, equity 10%, taxable fixed income 6%, tax-free 7%, income until 90.</p>
+  <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg w-fit focus-visible:outline-2 focus-visible:outline-emerald-950">Save assumptions</button>
+</form>
+{% endblock %}

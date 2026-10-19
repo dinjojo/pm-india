@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% load humanize inr %}
+{% block title %}Holdings{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3 mb-5">
+  <div>
+    <h1 class="text-2xl font-semibold">Holdings</h1>
+    <p class="text-stone-800 text-sm mt-1">
+      {{ pv.holdings|length }} holdings in {{ pv.class_breakdown|length }} asset classes.
+      Balance-type schemes (PPF, EPF, NPS, FD) have no price feed — update their value from the passbook with “Update value”.
+    </p>
+  </div>
+  <a href="{% url 'add_investment' %}" class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Add Investment</a>
+</div>
+
+{# ---------- KPI strip ---------- #}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-xs text-stone-800">Portfolio value</p>
+    <p class="text-2xl font-semibold tnum text-stone-900">{{ pv.total_current|inr_short }}</p>
+    <p class="text-xs text-stone-800 tnum">₹{{ pv.total_current|floatformat:0|intcomma }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-xs text-stone-800">Invested</p>
+    <p class="text-2xl font-semibold tnum text-stone-900">{{ pv.total_invested|inr_short }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-xs text-stone-800">Total gain</p>
+    <p class="text-2xl font-semibold tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">
+      {{ pv.total_gain|inr_short }} {% if pv.total_invested %}({{ pv.total_gain_pct|floatformat:1 }}%){% endif %}
+    </p>
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-xs text-stone-800">Largest position</p>
+    <p class="text-2xl font-semibold tnum text-stone-900 truncate" title="{{ pv.holdings.0.name }}">{{ pv.holdings.0.current|inr_short }}</p>
+    <p class="text-xs text-stone-800 truncate">{{ pv.holdings.0.name }}</p>
+  </div>
+</div>
+
+{# ---------- Allocation bar ---------- #}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4 mt-4">
+  <div class="flex h-4 rounded-full overflow-hidden" role="img" aria-label="Portfolio allocation by {{ group_choices }} ">
+    {% for g in alloc_bar %}
+    <div class="h-full {{ g.color }}" style="width: {% widthratio g.current pv.total_current 100 %}%" title="{{ g.label }}: {{ g.current|inr_short }} ({{ g.weight|floatformat:1 }}%)"></div>
+    {% endfor %}
+  </div>
+  <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-stone-800">
+    {% for g in alloc_bar %}
+    <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm {{ g.color }}"></span>{{ g.label }} <span class="tnum font-medium">{{ g.weight|floatformat:1 }}%</span></span>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="flex flex-wrap items-center gap-2 mt-6">
+  <span class="text-sm font-semibold text-stone-900">Group by</span>
+  {% for key, label in group_choices %}
+  <a href="?group={{ key }}"
+     class="text-sm font-medium px-3 py-1.5 rounded-full border {% if group == key %}bg-emerald-800 text-white border-emerald-800{% else %}bg-white text-stone-800 border-stone-300 hover:bg-stone-100{% endif %} focus-visible:outline-2 focus-visible:outline-emerald-900">{{ label }}</a>
+  {% endfor %}
+  <span class="ml-auto flex gap-2">
+    <button type="button" onclick="document.querySelectorAll('section details').forEach(d => d.open = true)"
+            class="text-xs font-medium px-2.5 py-1 rounded-md border border-stone-300 text-stone-800 hover:bg-stone-100">Expand all</button>
+    <button type="button" onclick="document.querySelectorAll('section details').forEach(d => d.open = false)"
+            class="text-xs font-medium px-2.5 py-1 rounded-md border border-stone-300 text-stone-800 hover:bg-stone-100">Collapse all</button>
+  </span>
+</div>
+
+{% for g in groups %}
+<section class="mt-5">
+  <details class="group" {% if g.weight >= 5.0 %}open{% endif %}>
+    <summary class="flex flex-wrap items-baseline gap-x-4 gap-y-1 cursor-pointer list-none rounded-lg px-3 py-2.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 select-none">
+      <span class="font-semibold text-stone-900">{{ g.label }}</span>
+      <span class="text-sm tnum font-medium text-stone-800">{{ g.weight|floatformat:1 }}% of portfolio</span>
+      <span class="text-sm tnum font-medium text-stone-900">{{ g.current|inr_short }}</span>
+      <span class="text-sm tnum font-medium {% if g.gain_pct >= 0 %}positive{% else %}negative{% endif %}">{{ g.gain_pct|floatformat:1 }}%</span>
+      <span class="text-xs text-stone-800">{{ g.holdings|length }} holding{{ g.holdings|length|pluralize }}</span>
+      {% if g.manual %}<span class="text-xs text-amber-800 bg-amber-100 rounded px-1.5 py-0.5" title="Values entered manually — no price feed for this class">manual values</span>{% endif %}
+      <span class="ml-auto text-emerald-800 text-xs font-medium group-open:hidden">show</span>
+      <span class="ml-auto text-emerald-800 text-xs font-medium hidden group-open:inline">hide</span>
+    </summary>
+    <div class="bg-white rounded-xl border border-t-0 border-stone-300 shadow-sm overflow-x-auto mt-px">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-stone-800 border-b border-stone-300 bg-stone-50">
+            <th class="px-4 py-2.5 font-semibold"></th>
+            <th class="px-4 py-2.5 font-semibold">Asset</th>
+            <th class="px-4 py-2.5 font-semibold">Account</th>
+            <th class="px-4 py-2.5 font-semibold text-right">Qty</th>
+            <th class="px-4 py-2.5 font-semibold text-right">Invested</th>
+            <th class="px-4 py-2.5 font-semibold text-right">Current</th>
+            <th class="px-4 py-2.5 font-semibold text-right">Gain</th>
+            <th class="px-4 py-2.5"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for h in g.holdings %}
+          <tr id="holding-{{ h.holding_pk }}" class="border-t border-stone-200">
+            <td class="px-4 py-3 w-8">
+              <span id="star-{{ h.holding_pk }}">{% include "partials/priority_star.html" with holding_pk=h.holding_pk priority=h.priority %}</span>
+            </td>
+            <td class="px-4 py-3 font-medium">
+              {{ h.name }}
+              {% if h.manual_value %}<span class="ml-1 text-xs text-amber-800 bg-amber-100 rounded px-1.5 py-0.5" title="No price feed — value entered manually">manual</span>{% endif %}
+            </td>
+            <td class="px-4 py-3 text-stone-800">{{ h.account }}{% if h.owner %} · {{ h.owner }}{% endif %}</td>
+            <td class="px-4 py-3 text-right tnum">{{ h.quantity|floatformat:3 }}</td>
+            <td class="px-4 py-3 text-right tnum">₹{{ h.invested|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-3 text-right tnum font-medium">₹{{ h.current|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-3 text-right tnum {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">
+              ₹{{ h.gain|floatformat:0|intcomma }} ({{ h.gain_pct|floatformat:1 }}%)
+            </td>
+            <td class="px-4 py-3 text-right whitespace-nowrap">
+              <a href="{% url 'add_investment' %}?asset={{ h.holding_pk }}"
+                 class="text-sm text-emerald-800 hover:underline font-medium focus-visible:outline-2 focus-visible:outline-emerald-700 rounded">Add txn</a>
+              <button hx-get="{% url 'update_value' h.holding_pk %}" hx-target="#holding-{{ h.holding_pk }}" hx-swap="outerHTML"
+                      class="text-sm text-stone-800 hover:text-stone-950 hover:underline font-medium focus-visible:outline-2 focus-visible:outline-emerald-700 rounded">Update value</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+{% endfor %}
+
+{% if not pv.holdings %}
+<div class="bg-white rounded-xl border border-stone-300 p-10 text-center">
+  <p class="text-stone-800">No holdings yet.</p>
+  <div class="flex gap-3 justify-center mt-4">
+    <a href="{% url 'add_investment' %}" class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Add Investment</a>
+    <a href="{% url 'import_cas' %}" class="border border-stone-300 hover:bg-stone-100 text-stone-800 text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import your CAS statement</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

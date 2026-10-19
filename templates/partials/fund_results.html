@@ -1,0 +1,13 @@
+<ul class="bg-white rounded-xl border border-stone-300 shadow-sm divide-y divide-stone-200 overflow-hidden">
+  {% for r in results %}
+  <li>
+    <a href="{% url 'fund_detail' r.code %}"
+       class="block px-4 py-3 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-emerald-800">
+      <span class="font-medium text-stone-900">{{ r.name }}</span>
+      <span class="text-xs text-stone-700 ml-2 tnum">#{{ r.code }}</span>
+    </a>
+  </li>
+  {% empty %}
+  <li class="px-4 py-3 text-stone-800 text-sm">No schemes matched “{{ q }}”.</li>
+  {% endfor %}
+</ul>

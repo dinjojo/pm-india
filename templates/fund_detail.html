@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ s.name }}</h1>
+    <p class="text-stone-800 text-sm mt-1">
+      {{ s.fund_house }} · {{ s.category }} · {{ s.type }}
+      {% if s.inception %} · since {{ s.inception }}{% endif %}
+      {% if s.isin %} · ISIN {{ s.isin }}{% endif %}
+    </p>
+  </div>
+  <div class="flex flex-wrap items-center gap-4">
+  <a href="{% url 'scheme_analytics' s.code %}" class="text-sm font-medium text-emerald-800 hover:underline">Full analytics →</a>
+  <a href="{% url 'returns_calculator' %}{% if s.returns.5Y is not None %}?rate={{ s.returns.5Y|floatformat:1 }}{% endif %}" class="text-sm font-medium text-emerald-800 hover:underline">Returns calculator →</a>
+  <a href="{% url 'add_investment' %}" class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Add transaction</a>
+  </div>
+</div>
+
+<div class="grid sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-6">
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-sm text-stone-700">Latest NAV ({{ s.latest_date }})</p>
+    <p class="text-xl font-semibold tnum text-stone-900">₹{{ s.latest_nav|floatformat:2 }}</p>
+  </div>
+  {% for k, v in s.returns.items %}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-sm text-stone-700">{{ k }} return</p>
+    <p class="text-xl font-semibold tnum {% if v is None %}text-stone-900{% elif v >= 0 %}positive{% else %}negative{% endif %}">
+      {% if v is None %}—{% else %}{{ v|floatformat:2 }}%{% endif %}
+    </p>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 min-w-0">
+  <h2 class="text-sm font-semibold text-stone-900 mb-3">NAV history</h2>
+  <div style="height:240px;position:relative"><canvas id="navchart" role="img" aria-label="NAV history line chart"></canvas></div>
+</div>
+
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <h2 class="text-sm font-semibold text-stone-900">Dividend / IDCW payouts</h2>
+  {% if s.dividends %}
+  <table class="w-full text-sm mt-3 max-w-xl">
+    <thead>
+      <tr class="text-left text-stone-800 border-b border-stone-300">
+        <th class="py-2 font-semibold">Ex-date</th>
+        <th class="py-2 font-semibold text-right">Per unit</th>
+        <th class="py-2 font-semibold text-right">NAV on date</th>
+      </tr>
+    </thead>
+    <tbody class="tnum">
+      {% for d in s.dividends reversed %}
+      <tr class="border-t border-stone-200">
+        <td class="py-2 text-stone-900">{{ d.date }}</td>
+        <td class="py-2 text-right text-stone-900">₹{{ d.per_unit|floatformat:4 }}</td>
+        <td class="py-2 text-right text-stone-900">₹{{ d.nav|floatformat:2 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-stone-800 text-sm mt-2">
+    The free AMFI feed does not publish dividend history for this scheme.
+    Your own holdings' dividends appear on the <a class="text-emerald-800 font-medium hover:underline" href="{% url 'tax' %}">Tax page</a>.
+    For the scheme's full payout history and AUM / fund-manager changes, see
+    <a class="text-emerald-800 font-medium hover:underline" href="{{ s.vr_link }}" rel="noopener">Value Research</a>.
+  </p>
+  {% endif %}
+</div>
+
+<p class="text-sm text-stone-800 mt-4">
+  <a class="text-emerald-800 font-medium hover:underline" href="{% url 'funds' %}">← Search another fund</a>
+</p>
+
+{{ s.chart|json_script:"nav-data" }}
+<script>
+const raw = JSON.parse(document.getElementById('nav-data').textContent);
+new Chart(document.getElementById('navchart'), {
+  type: 'line',
+  data: { labels: raw.map(p => new Date(p.d).toLocaleDateString('en-IN', {month:'short', year:'2-digit'})),
+    datasets: [{ label: 'NAV', data: raw.map(p => p.nav), borderColor: '#059669', borderWidth: 2,
+      backgroundColor: 'rgba(5,150,105,0.10)', fill: true, tension: 0.25, pointRadius: 0, pointHoverRadius: 3 }]},
+  options: { animation: false, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 }, color: '#44403c' } },
+      y: { border: { display: false }, grid: { color: '#f5f5f4' }, position: 'right',
+           ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#44403c' } } },
+    plugins: { legend: { display: false },
+      tooltip: { backgroundColor: '#1c1917', padding: 10,
+        callbacks: { label: c => 'NAV ₹' + c.parsed.y.toFixed(2) } } } }
+});
+</script>
+{% endblock %}

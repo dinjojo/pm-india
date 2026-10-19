@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+@theme {
+  /* Semantic palette: emerald = positive, terracotta = negative, sky = info.
+     Never break this mapping across pages. */
+  --color-positive: #059669;
+  --color-negative: #dc2626;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+
+.positive { color: var(--color-positive); }
+.negative { color: var(--color-negative); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

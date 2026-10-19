@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local data: SQLite db holds personal financial data — never commit
+data/
+*.sqlite3
+
+# Regenerable static build
+static/css/app.css
+
+# Env / tooling
+.env
+.amp/
+bin/

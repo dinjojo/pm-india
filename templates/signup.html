@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Sign up{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto bg-white rounded-xl border border-stone-200 p-8 mt-10">
+  <h1 class="text-xl font-semibold mb-1">Create your account</h1>
+  <p class="text-stone-500 text-sm mb-6">First account = owner of this instance.</p>
+  <form method="post" class="space-y-4">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg">Sign up</button>
+  </form>
+  <p class="text-sm text-stone-500 mt-4">Have an account? <a class="text-emerald-700" href="{% url 'login' %}">Log in</a></p>
+</div>
+{% endblock %}

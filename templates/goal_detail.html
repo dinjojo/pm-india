@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% load humanize inr %}
+{% block title %}{{ plan.name }}{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ plan.name }}</h1>
+    <p class="text-stone-800 text-sm mt-1">{{ plan.get_kind_display }}{% if plan.flexible %} · flexible{% endif %}{% if plan.inflation_override %} · goal inflation {{ plan.inflation_override }}%{% endif %}</p>
+  </div>
+  <a href="{% url 'goals' %}" class="text-sm font-medium text-emerald-800 hover:underline">← All goals</a>
+</div>
+
+{% if young_advice %}
+<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mt-6">
+  <h2 class="font-semibold text-emerald-900">Starting early — the simplified under-26 path</h2>
+  <p class="text-sm text-stone-900 mt-1">The workbook keeps advice simple before 26: build a safety net, then let equity and time do the work. No bucket ladder needed yet.</p>
+  <ol class="grid sm:grid-cols-2 gap-4 mt-4 text-sm text-stone-900">
+    <li class="bg-white rounded-lg border border-emerald-200 p-4">
+      <span class="font-semibold">1. Emergency fund first</span>
+      <span class="block text-2xl font-semibold tnum mt-1">{{ young_advice.emergency_fund|inr_short }}</span>
+      <span class="text-stone-800">6 months of today's expenses, in a savings account or liquid fund.</span>
+    </li>
+    <li class="bg-white rounded-lg border border-emerald-200 p-4">
+      <span class="font-semibold">2. Then a {{ young_advice.equity_pct }}% equity SIP</span>
+      <span class="block text-2xl font-semibold tnum mt-1">{{ young_advice.monthly_sip|inr_short }}<span class="text-base font-medium text-stone-800"> /month</span></span>
+      <span class="text-stone-800">stepped up {{ young_advice.step_up_pct }}% every year — an index fund is fine. If you have EPF, the workbook's rule of thumb is to invest 150% of your EPF contribution in equity.</span>
+      {% if young_advice.affordability %}
+      <span class="block text-stone-800 mt-2 tnum">That's <span class="font-semibold text-stone-900">{{ young_advice.affordability.pct }}%</span> of your take-home — {{ young_advice.affordability.note }}.</span>
+      {% endif %}
+    </li>
+  </ol>
+  <p class="text-sm font-medium text-stone-900 mt-4">Please revisit the full retirement plan below when you turn 26{% if young_advice.revisit_in_years %} (in {{ young_advice.revisit_in_years }} year{{ young_advice.revisit_in_years|pluralize }}){% endif %}.</p>
+</div>
+{% endif %}
+
+{# ---------- Hero: the answer first ---------- #}
+<div class="rounded-xl border p-6 mt-6 {% if result.on_track %}bg-emerald-50 border-emerald-300{% else %}bg-white border-stone-300 shadow-sm{% endif %}">
+  <div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-8 items-start">
+    <div>
+      {% if result.on_track %}
+        <span class="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-900 bg-emerald-100 border border-emerald-300 rounded-full px-3 py-1">✓ On track</span>
+        <p class="text-stone-900 mt-3 text-sm">Your investments already cover this goal{% if result.corpus_in_hand %} — {{ result.corpus_in_hand|inr_short }} of the {{ result.gross_corpus|inr_short }} needed{% endif %}.</p>
+      {% else %}
+        <span class="inline-flex items-center gap-1.5 text-sm font-semibold {% if result.depletion_age %}text-amber-900 bg-amber-100 border border-amber-300{% else %}text-stone-900 bg-stone-100 border border-stone-300{% endif %} rounded-full px-3 py-1">Monthly SIP needed</span>
+        <p class="text-5xl font-semibold tnum text-stone-900 mt-3">{{ result.monthly_sip|inr_short }}<span class="text-lg font-medium text-stone-800"> /month</span></p>
+        <p class="text-sm text-stone-800 mt-1">stepping up {{ result.step_up_pct }}% every year · or {{ result.lumpsum_now|inr_short }} as a lumpsum today plus the balance as SIP</p>
+        {% if affordability %}
+        <p class="text-sm text-stone-800 mt-1 tnum">That's <span class="font-semibold text-stone-900">{{ affordability.pct }}%</span> of your monthly take-home — {{ affordability.note }}.</p>
+        {% endif %}
+        {% if result.current_path_depletion_age %}
+        <p class="text-sm font-semibold text-red-800 mt-2">⚠ With today's investments alone, money runs out at age {{ result.current_path_depletion_age }} — the SIP closes that gap.</p>
+        {% endif %}
+      {% endif %}
+      {% if result.gross_corpus %}
+      <div class="mt-5">
+        <div class="flex justify-between text-xs font-medium text-stone-800 mb-1">
+          <span>Corpus funded</span><span class="tnum">{{ funding_pct }}% · {{ result.corpus_in_hand|inr_short }} of {{ result.gross_corpus|inr_short }}</span>
+        </div>
+        <div class="h-2.5 bg-stone-200 rounded-full overflow-hidden" role="img" aria-label="Corpus funding progress {{ funding_pct }} percent">
+          <div class="h-full {% if funding_pct >= 100 %}bg-emerald-600{% else %}bg-emerald-500{% endif %}" style="width: {{ funding_pct }}%"></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="text-sm text-stone-900 space-y-3">
+      {% if plan.kind == "retirement" %}
+      <div class="flex items-center gap-2">
+        <span class="font-semibold tnum">Age {{ plan.current_age }}</span>
+        <span class="flex-1 border-t-2 border-dashed border-stone-300"></span>
+        <span class="font-semibold tnum">Retire {{ plan.retire_age }}</span>
+        <span class="flex-1 border-t-2 border-stone-400"></span>
+        <span class="font-semibold tnum">Plan to {{ assumptions.life_expectancy }}</span>
+      </div>
+      {% endif %}
+      <dl class="tnum space-y-1.5">
+        {% for label, value in rows %}
+        <div class="flex justify-between gap-4 border-t border-stone-200 pt-1.5 first:border-0">
+          <dt class="text-stone-800">{{ label }}</dt>
+          <dd class="font-semibold text-stone-900 text-right">{{ value }}</dd>
+        </div>
+        {% endfor %}
+      </dl>
+      {% if assumptions %}
+      <p class="text-xs text-stone-800">
+        Assumptions: inflation {{ assumptions.inflation }}% → {{ assumptions.inflation_retirement }}% in retirement · equity {{ assumptions.equity_return }}% · taxable FI {{ assumptions.fixed_return }}% · tax-free {{ assumptions.taxfree_return }}%.
+        <a href="{% url 'goal_settings' %}" class="font-medium text-emerald-800 hover:underline">Edit</a>
+      </p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if has_snap_history %}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <h2 class="text-sm font-semibold text-stone-900 mb-1">Your tracked portfolio so far</h2>
+  <p class="text-xs text-stone-800 mb-3">Daily snapshots of everything you track here — the corpus this goal draws on. Points before the first snapshot are reconstructed from historical NAVs.</p>
+  <div style="height:200px;position:relative"><canvas id="snapchart" role="img" aria-label="Line chart of tracked portfolio invested versus current value over time"></canvas></div>
+</div>
+{% endif %}
+
+{% if scenarios %}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <h2 class="text-sm font-semibold text-stone-900 mb-1">Scenarios — what if markets don't cooperate?</h2>
+  <p class="text-xs text-stone-800 mb-4">Bear: equity 7%, inflation 7%. Bull: equity 12%, inflation 5%. Step-up raises the SIP 10% a year — a bigger early SIP that shrinks later. Retire-late pushes retirement 3 years out, giving compounding more time.</p>
+  <div class="space-y-2.5">
+    {% for s in scenarios %}
+    <div class="flex items-center gap-3">
+      <span class="w-24 text-sm font-medium text-stone-900 shrink-0">{{ s.label }}</span>
+      <div class="flex-1 h-6 bg-stone-100 rounded-md overflow-hidden">
+        <div class="h-full rounded-md {% if s.label == 'Base' %}bg-emerald-600{% else %}bg-stone-400{% endif %}"
+             style="width: {% widthratio s.monthly_sip max_sip 100 %}%"></div>
+      </div>
+      <span class="w-28 text-right text-sm font-semibold tnum text-stone-900 shrink-0">{{ s.monthly_sip|inr_short }}</span>
+      <span class="hidden sm:block w-64 text-xs text-stone-800 shrink-0">{{ s.note }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="text-xs text-stone-800 mt-3">Corpus needed: {% for s in scenarios %}{{ s.label }} {{ s.net_corpus|inr_short }}{% if not forloop.last %} · {% endif %}{% endfor %}.</p>
+</div>
+{% endif %}
+
+{% if result.buckets %}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <h2 class="text-sm font-semibold text-stone-900 mb-1">Bucket ladder at retirement</h2>
+  <p class="text-xs text-stone-800 mb-4">Each bucket earns its own return. Every year the income bucket pays the year's withdrawal and is refilled forward from the riskier buckets; the high-risk (equity) bucket holds the rest.</p>
+  <div class="space-y-2.5">
+    {% for b in result.buckets %}
+    <div class="flex items-center gap-3">
+      <span class="w-56 text-sm font-medium text-stone-900 shrink-0 truncate" title="{{ b.name }}">{{ b.name }}</span>
+      <div class="flex-1 h-6 bg-stone-100 rounded-md overflow-hidden">
+        <div class="h-full bg-emerald-500" style="width: {% widthratio b.allocation max_bucket 100 %}%"></div>
+      </div>
+      <span class="w-32 text-right text-sm font-semibold tnum text-stone-900 shrink-0">{{ b.allocation|inr_short }}</span>
+      <span class="hidden sm:block w-64 text-xs text-stone-800 shrink-0 tnum">{{ b.years }}y · return {{ b.return_pct|floatformat:"-2" }}%{% if b.equity_pct %} · {{ b.equity_pct }}% equity{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if result.cash_flow %}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <h2 class="text-sm font-semibold text-stone-900 mb-1">Will the corpus outlive you?</h2>
+  <p class="text-xs text-stone-800 mb-3">Closing corpus each year of retirement under the funded plan{% if result.floor_monthly %}, with the annuity paying the guaranteed floor{% endif %}{% if result.income_monthly_at_retirement %} and your other income netted off{% endif %}.{% if result.current_path_depletion_age %} The dashed line shows today's-investments-only path dying at age {{ result.current_path_depletion_age }}.{% endif %}</p>
+  <div style="height:240px;position:relative"><canvas id="drawdown" role="img" aria-label="Line chart of closing corpus by age through retirement"></canvas></div>
+  <details class="mt-4 group">
+    <summary class="text-sm font-semibold text-emerald-800 cursor-pointer hover:underline select-none">Show the year-by-year cash-flow table</summary>
+    <div class="overflow-x-auto mt-3">
+      <table class="w-full text-xs tnum whitespace-nowrap">
+        <thead>
+          <tr class="text-left text-stone-800 border-b border-stone-300">
+            <th class="py-2 px-2 font-semibold">Age</th>
+            <th class="py-2 px-2 font-semibold text-right">Opening corpus</th>
+            <th class="py-2 px-2 font-semibold text-right">Expense</th>
+            <th class="py-2 px-2 font-semibold text-right">Income applied</th>
+            <th class="py-2 px-2 font-semibold text-right">Guaranteed floor</th>
+            <th class="py-2 px-2 font-semibold text-right">Withdrawn</th>
+            {% for b in result.buckets %}<th class="py-2 px-2 font-semibold text-right" title="{{ b.name }}">{{ b.short|default:b.name }} growth</th>{% endfor %}
+            <th class="py-2 px-2 font-semibold text-right">Closing corpus</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.cash_flow %}
+          <tr class="border-t border-stone-200 {% if row.shortfall %}bg-red-50{% endif %}">
+            <td class="py-1.5 px-2 text-stone-900">{{ row.age }}</td>
+            <td class="py-1.5 px-2 text-right text-stone-900">₹{{ row.opening|floatformat:0|intcomma }}</td>
+            <td class="py-1.5 px-2 text-right text-stone-900">₹{{ row.expense|floatformat:0|intcomma }}</td>
+            <td class="py-1.5 px-2 text-right text-stone-900">₹{{ row.income|floatformat:0|intcomma }}</td>
+            <td class="py-1.5 px-2 text-right text-stone-900">₹{{ row.floor|floatformat:0|intcomma }}</td>
+            <td class="py-1.5 px-2 text-right text-stone-900">₹{{ row.withdrawal|floatformat:0|intcomma }}</td>
+            {% for g in row.growth %}<td class="py-1.5 px-2 text-right text-stone-900">₹{{ g|floatformat:0|intcomma }}</td>{% endfor %}
+            <td class="py-1.5 px-2 text-right font-semibold text-stone-900">₹{{ row.closing|floatformat:0|intcomma }}</td>
+          </tr>
+          {% if row.age == result.depletion_age %}
+          <tr><td colspan="99" class="py-2 px-2 font-semibold text-red-800 bg-red-50">⚠ Money runs out at age {{ row.age }} — short by ₹{{ row.shortfall|floatformat:0|intcomma }} ({{ row.shortfall|inr_short }}) this year.</td></tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</div>
+{% endif %}
+
+{% if result.schedule %}
+<details class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <summary class="text-sm font-semibold text-emerald-800 cursor-pointer hover:underline select-none">Show the investment schedule (SIP growth year by year)</summary>
+  <div class="overflow-x-auto mt-3 max-w-2xl">
+    <table class="w-full text-sm tnum">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2.5 px-3 font-semibold">Year</th>
+          <th class="py-2.5 px-3 font-semibold text-right">Monthly SIP</th>
+          <th class="py-2.5 px-3 font-semibold text-right">Value at year end</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for y, m, v in result.schedule %}
+        <tr class="border-t border-stone-200">
+          <td class="py-2.5 px-3 text-stone-900">{{ y }}</td>
+          <td class="py-2.5 px-3 text-right text-stone-900">₹{{ m|floatformat:0|intcomma }}</td>
+          <td class="py-2.5 px-3 text-right text-stone-900">₹{{ v|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function money(v) {
+  if (Math.abs(v) >= 1e7) return '₹' + (v / 1e7).toFixed(2) + ' cr';
+  if (Math.abs(v) >= 1e5) return '₹' + (v / 1e5).toFixed(2) + ' L';
+  return '₹' + Math.round(v).toLocaleString('en-IN');
+}
+{% if has_snap_history %}
+new Chart(document.getElementById('snapchart'), {
+  type: 'line',
+  data: { labels: {{ snap_trend|safe }}.dates,
+          datasets: [
+            { label: 'Current value', data: {{ snap_trend|safe }}.current, borderColor: '#047857', backgroundColor: 'rgba(4,120,87,.08)', fill: true, tension: .25, pointRadius: 2, borderWidth: 2 },
+            { label: 'Invested', data: {{ snap_trend|safe }}.invested, borderColor: '#b45309', borderDash: [5, 4], fill: false, tension: .2, pointRadius: 0, borderWidth: 2 }
+          ] },
+  options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { color: '#1c1917', boxWidth: 12 } } },
+    scales: { x: { ticks: { color: '#44403c', maxTicksLimit: 8 } },
+              y: { ticks: { color: '#44403c', callback: money } } } }
+});
+{% endif %}
+{% if result.cash_flow %}
+(() => {
+  const c = {{ cash_chart|safe }};
+  const pts = c.ages.map((a, i) => ({ x: a, y: c.closing[i] }));
+  const seg = [{ x: c.ages[0], y: c.opening || c.closing[0] }];
+  if (c.depletion_age) seg.push({ x: c.depletion_age, y: 0 });
+  new Chart(document.getElementById('drawdown'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Closing corpus (funded plan)', data: pts, borderColor: '#047857', backgroundColor: 'rgba(4,120,87,.08)', fill: true, tension: .25, pointRadius: 0, borderWidth: 2 }
+      {% if result.current_path_depletion_age %},{ label: 'Today\'s investments only', data: seg, borderColor: '#b91c1c', borderDash: [6, 4], fill: false, tension: 0, pointRadius: 3, borderWidth: 2 }{% endif %}
+    ] },
+    options: { maintainAspectRatio: false, interaction: { mode: 'nearest', intersect: false },
+      plugins: { legend: { labels: { color: '#1c1917', boxWidth: 12 } },
+        tooltip: { callbacks: { title: items => 'Age ' + items[0].parsed.x,
+                                label: item => item.dataset.label + ': ' + money(item.parsed.y) } } },
+      scales: { x: { type: 'linear', title: { display: true, text: 'Age', color: '#44403c' }, ticks: { color: '#44403c' } },
+                y: { ticks: { color: '#44403c', callback: money } } } }
+  });
+})();
+{% endif %}
+</script>
+{% endblock %}

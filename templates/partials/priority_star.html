@@ -1,0 +1,4 @@
+<button hx-post="{% url 'toggle_priority' holding_pk %}" hx-swap="outerHTML"
+        title="{% if priority %}Remove priority{% else %}Mark as priority — pins it first on Dashboard and Holdings{% endif %}"
+        aria-label="{% if priority %}Remove priority{% else %}Mark as priority{% endif %}"
+        class="text-lg leading-none {% if priority %}text-amber-500{% else %}text-stone-300 hover:text-stone-400{% endif %} focus-visible:outline-2 focus-visible:outline-emerald-600 rounded">★</button>

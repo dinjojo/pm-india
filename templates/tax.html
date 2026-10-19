@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% load humanize inr %}
+{% block title %}Tax{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold">Tax</h1>
+<p class="text-stone-800 text-sm mt-1">
+  Equity &amp; equity-MF lots, FIFO matching · LTCG 12.5% above ₹1,25,000 exemption · STCG 20%.
+  Dividends and interest are taxed at your slab — reported, not computed.
+</p>
+
+{# ---------- Sticky FY + section nav ---------- #}
+<div class="sticky top-14 z-10 -mx-6 px-6 py-2.5 bg-stone-50/95 backdrop-blur border-b border-stone-200 mt-4 flex flex-wrap items-center gap-2">
+  {% if summaries %}
+  <div class="flex gap-2" role="group" aria-label="Select financial year">
+    {% for s in summaries %}
+    <a href="?fy={{ s.fy }}" class="text-sm px-3 py-1.5 rounded-lg border {% if s.fy == summary.fy %}bg-emerald-600 text-white border-emerald-600{% else %}bg-white border-stone-300 text-stone-800{% endif %}">FY {{ s.fy }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <nav class="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium" aria-label="Tax sections">
+    <a href="#overview" class="text-emerald-800 hover:underline">Overview</a>
+    <a href="#gains" class="text-emerald-800 hover:underline">Realised gains</a>
+    <a href="#sell" class="text-emerald-800 hover:underline">Sell today</a>
+    <a href="#property" class="text-emerald-800 hover:underline">Property</a>
+    <a href="#income" class="text-emerald-800 hover:underline">Income &amp; deductions</a>
+  </nav>
+</div>
+
+{# ---------- Overview ---------- #}
+{% if summary %}
+<div id="overview" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-5 scroll-mt-28">
+  <h2 class="text-sm font-semibold text-stone-900">Tax position — FY {{ summary.fy }}</h2>
+  <p class="text-xs text-stone-800 mt-1">
+    {% if summary.tax > 0 %}You owe an estimated {{ summary.tax|inr_short }} in capital-gains tax this FY.{% elif summary.ltcg > 0 %}Realised LTCG {{ summary.ltcg|inr_short }} — fully inside the ₹1.25L exemption, so no tax.{% else %}No realised capital gains yet this FY.{% endif %}
+    {% if harvest.headroom > 0 %} You can still book {{ harvest.headroom|inr_short }} of long-term gains tax-free.{% endif %}
+  </p>
+  <div class="grid sm:grid-cols-4 gap-4 mt-4">
+    <div class="rounded-lg border border-stone-200 p-4">
+      <p class="text-xs text-stone-800">STCG</p>
+      <p class="text-xl font-semibold tnum {% if summary.stcg > 0 %}negative{% endif %}">{{ summary.stcg|inr_short }}</p>
+    </div>
+    <div class="rounded-lg border border-stone-200 p-4">
+      <p class="text-xs text-stone-800">LTCG</p>
+      <p class="text-xl font-semibold tnum text-stone-900">{{ summary.ltcg|inr_short }}</p>
+    </div>
+    <div class="rounded-lg border border-stone-200 p-4">
+      <p class="text-xs text-stone-800">Estimated tax</p>
+      <p class="text-xl font-semibold tnum text-stone-900">{{ summary.tax|inr_short }}</p>
+    </div>
+    <div class="rounded-lg border border-stone-200 p-4">
+      <p class="text-xs text-stone-800">Dividends / IDCW</p>
+      <p class="text-xl font-semibold tnum text-stone-900">{{ dividends|inr_short }}</p>
+    </div>
+  </div>
+
+  {# LTCG exemption headroom #}
+  <div class="mt-5">
+    <div class="flex justify-between text-xs font-medium text-stone-800 mb-1">
+      <span>₹1.25 L LTCG exemption used</span>
+      <span class="tnum">{{ used_exemption|inr_short }} of ₹1.25L</span>
+    </div>
+    <div class="h-2.5 bg-stone-200 rounded-full overflow-hidden">
+      <div class="h-full {% if exemption_pct >= 100 %}bg-red-600{% else %}bg-sky-600{% endif %}" style="width: {{ exemption_pct }}%"></div>
+    </div>
+  </div>
+
+  {# 80C deduction progress #}
+  <div class="mt-4">
+    <div class="flex justify-between text-xs font-medium text-stone-800 mb-1">
+      <span>80C-style deductions used (PPF / EPF deposits this year)</span>
+      <span class="tnum">{{ deductions_used|inr_short }} of ₹1.5L cap</span>
+    </div>
+    <div class="h-2.5 bg-stone-200 rounded-full overflow-hidden">
+      <div class="h-full {% if deduction_pct >= 100 %}bg-emerald-600{% else %}bg-amber-500{% endif %}" style="width: {{ deduction_pct }}%"></div>
+    </div>
+    {% if deduction_pct < 100 %}<p class="text-xs text-stone-800 mt-1">Room left: {{ deductions_left|inr_short }}. PPF, EPF (employee share) and eligible NPS count toward 80C.</p>{% endif %}
+  </div>
+</div>
+
+{# ---------- Realised gains ---------- #}
+<div id="gains" class="mt-6 scroll-mt-28">
+  <h2 class="text-sm font-semibold text-stone-900">Realised capital gains — FY {{ summary.fy }}</h2>
+  {% if summary.lots %}
+  <div class="bg-white rounded-xl border border-stone-300 overflow-x-auto mt-3">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="px-4 py-3 font-medium">Asset</th>
+          <th class="px-4 py-3 font-medium">Bought</th>
+          <th class="px-4 py-3 font-medium">Sold</th>
+          <th class="px-4 py-3 font-medium text-right">Cost</th>
+          <th class="px-4 py-3 font-medium text-right">Proceeds</th>
+          <th class="px-4 py-3 font-medium text-right">Gain</th>
+          <th class="px-4 py-3 font-medium">Type</th>
+        </tr>
+      </thead>
+      <tbody class="tnum">
+        {% for g in summary.lots %}
+        <tr class="border-t border-stone-100">
+          <td class="px-4 py-3 text-stone-900">{{ g.asset_name }}</td>
+          <td class="px-4 py-3 text-stone-800">{{ g.buy_date }}</td>
+          <td class="px-4 py-3 text-stone-800">{{ g.sell_date }}</td>
+          <td class="px-4 py-3 text-right text-stone-900">₹{{ g.cost|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-3 text-right text-stone-900">₹{{ g.proceeds|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-3 text-right {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-3 text-stone-800">{% if g.is_long_term %}LT{% else %}ST{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm text-stone-800 mt-2">Nothing sold this FY yet.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---------- Sell today / harvesting ---------- #}
+<div id="sell" class="mt-8 scroll-mt-28">
+  <h2 class="text-sm font-semibold text-stone-900">What you'd realise if you sold today</h2>
+  {% if unrealized %}
+  <p class="text-stone-800 text-sm mt-1 tnum">
+    Unrealised: short-term {{ harvest.st_unreal|inr_short }},
+    long-term {{ harvest.lt_unreal|inr_short }}.
+    {% if harvest.headroom > 0 %}You still have {{ harvest.headroom|inr_short }} of tax-free LTCG headroom this FY.{% else %}The ₹1.25L LTCG exemption is fully used this FY.{% endif %}
+  </p>
+  {% if harvest.losses %}
+  <div class="rounded-xl bg-sky-50 border border-sky-200 p-4 mt-3 text-sm text-sky-900">
+    <b>Tax-loss harvesting:</b> selling {% for l in harvest.losses %}{{ l.asset_name }} (₹{{ l.gain|floatformat:0|intcomma }} loss{% if not l.is_long_term %}, short-term{% endif %}){% if not forloop.last %}, {% endif %}{% endfor %}
+    would offset realised gains. India has no wash-sale rule — you may rebuy the same fund.
+  </div>
+  {% endif %}
+  <details class="bg-white rounded-xl border border-stone-300 mt-3" {% if not hide_zero %}open{% endif %}>
+    <summary class="px-4 py-3 text-sm font-semibold text-emerald-800 cursor-pointer hover:underline select-none">
+      All {{ unrealized|length }} unrealised lots{% if hide_zero %} ({{ zero_count }} at ₹0 gain hidden — toggle “hide zero-gain lots” in the address bar with ?hide_zero=0){% endif %}
+    </summary>
+    <div class="overflow-x-auto border-t border-stone-200">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-stone-800 border-b border-stone-300 bg-stone-50">
+            <th class="px-4 py-3 font-medium">Asset</th>
+            <th class="px-4 py-3 font-medium">First bought</th>
+            <th class="px-4 py-3 font-medium text-right">Cost</th>
+            <th class="px-4 py-3 font-medium text-right">Current</th>
+            <th class="px-4 py-3 font-medium text-right">Unrealised</th>
+            <th class="px-4 py-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody class="tnum">
+          {% for l in unrealized %}
+          {% if not hide_zero or l.gain != 0 %}
+          <tr class="border-t border-stone-100">
+            <td class="px-4 py-3 text-stone-900">{{ l.asset_name }}</td>
+            <td class="px-4 py-3 text-stone-800">{{ l.buy_date }}</td>
+            <td class="px-4 py-3 text-right text-stone-900">₹{{ l.cost|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-3 text-right text-stone-900">₹{{ l.current|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-3 text-right {% if l.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ l.gain|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-3 text-stone-800">
+              {% if l.is_long_term %}LT{% elif l.long_term_on > today %}LT from {{ l.long_term_on|date:"d M Y" }}{% else %}ST{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% else %}
+  <p class="text-stone-800 text-sm mt-2">Buy something to see unrealised gains here.</p>
+  {% endif %}
+</div>
+
+{# ---------- Property ---------- #}
+{% if re_whatifs %}
+<div id="property" class="mt-8 scroll-mt-28">
+  <h2 class="text-lg font-semibold text-stone-900">Selling your property — tax impact</h2>
+  <p class="text-stone-800 text-sm mt-1">Estimated at each property's current value. Change the sale price by updating the holding's value.</p>
+  {% for w in re_whatifs %}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-4">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="font-semibold text-stone-900">{{ w.name }}</h3>
+      <span class="text-sm font-medium text-stone-800">Bought {{ w.buy_date|date:"d M Y" }} · {% if w.long_term %}long-term (&gt;24 months){% else %}<b>short-term — taxed at slab</b>{% endif %}</span>
+    </div>
+    <div class="grid sm:grid-cols-4 gap-4 mt-4 text-sm">
+      <div><p class="text-stone-800">Sale price</p><p class="text-lg font-semibold tnum text-stone-900">{{ w.sale_price|inr_short }}</p></div>
+      <div><p class="text-stone-800">Cost</p><p class="text-lg font-semibold tnum text-stone-900">{{ w.cost|inr_short }}</p></div>
+      <div><p class="text-stone-800">Gain</p><p class="text-lg font-semibold tnum {% if w.gain >= 0 %}positive{% else %}negative{% endif %}">{{ w.gain|inr_short }}</p></div>
+      <div><p class="text-stone-800">Estimated tax (+4% cess)</p>
+        {% if w.tax is not None %}<p class="text-lg font-semibold tnum text-stone-900">{{ w.total_tax|inr_short }}</p>
+        {% else %}<p class="text-lg font-semibold text-stone-900">Slab rate</p>{% endif %}
+      </div>
+    </div>
+    {% if w.regime %}
+    <p class="text-sm text-stone-800 mt-3">Regime applied: <b>{{ w.regime }}</b>{% if w.old_buy %} (you bought before 23 Jul 2024, so the lower of 12.5% flat vs 20% indexed applies{% if w.indexed_cost %}; indexed cost ₹{{ w.indexed_cost|floatformat:0|intcomma }}{% endif %}){% endif %}.</p>
+    {% endif %}
+    {% if w.tds %}<p class="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3"><b>1% TDS:</b> a buyer must deduct 1% of the price (₹{{ w.sale_price|floatformat:0|intcomma }} scale) under Sec 194-IA when paying you. Check your Form 26AS after the sale.</p>{% endif %}
+    <div class="mt-3 text-sm text-stone-800">
+      <p class="font-semibold text-stone-900">Ways to reduce or defer the tax:</p>
+      <ul class="list-disc list-inside mt-1 space-y-0.5">
+        {% for e in w.exemptions %}<li>{{ e }}</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------- Income & deductions ---------- #}
+<div id="income" class="mt-8 scroll-mt-28">
+  <h2 class="text-lg font-semibold text-stone-900">Income &amp; deductions — FY {{ summary.fy|default:"—" }}</h2>
+  <div class="grid md:grid-cols-2 gap-6 mt-3">
+    <div class="bg-white rounded-xl border border-stone-300 p-6">
+      <h3 class="text-sm font-medium text-stone-800">Dividends / IDCW</h3>
+      <p class="text-xl font-semibold tnum mt-2 text-stone-900">{{ dividends|inr_short }}</p>
+      <p class="text-xs text-stone-800 mt-1">Taxed at your income-tax slab; report under “income from other sources”.</p>
+    </div>
+    <div class="bg-white rounded-xl border border-stone-300 p-6">
+      <h3 class="text-sm font-medium text-stone-800">Deduction-ready schemes</h3>
+      <p class="text-xl font-semibold tnum mt-2 text-stone-900">{{ deductions_used|inr_short }} deposited</p>
+      <p class="text-xs text-stone-800 mt-1">PPF/NPS qualify for 80C/80CCD; EPF via salary. Interest is tax-free (PPF) or EEE/standard rules.</p>
+    </div>
+  </div>
+  {% if schemes %}
+  <div class="bg-white rounded-xl border border-stone-300 overflow-x-auto mt-4">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="px-4 py-3 font-medium">Scheme</th>
+          <th class="px-4 py-3 font-medium">Type</th>
+          <th class="px-4 py-3 font-medium text-right">Opening</th>
+          <th class="px-4 py-3 font-medium text-right">Deposits</th>
+          <th class="px-4 py-3 font-medium text-right">Withdrawals</th>
+          <th class="px-4 py-3 font-medium text-right">Current</th>
+        </tr>
+      </thead>
+      <tbody class="tnum">
+        {% for s in schemes %}
+        <tr class="border-t border-stone-100">
+          <td class="px-4 py-3 text-stone-900">{{ s.name }}</td>
+          <td class="px-4 py-3 text-stone-800">{{ s.label }}</td>
+          <td class="px-4 py-3 text-right text-stone-900">₹{{ s.opening|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-3 text-right {% if s.deposits > 0 %}positive{% endif %}">₹{{ s.deposits|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-3 text-right text-stone-900">₹{{ s.withdrawals|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-3 text-right font-medium text-stone-900">₹{{ s.current|floatformat:0|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

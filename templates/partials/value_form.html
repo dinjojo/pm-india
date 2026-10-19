@@ -1,0 +1,17 @@
+<tr id="holding-{{ holding.pk }}" class="border-t border-stone-100 bg-amber-50/50">
+  <td class="px-4 py-3" colspan="4">
+    <form hx-post="{% url 'update_value' holding.pk %}" hx-target="#holding-{{ holding.pk }}" hx-swap="outerHTML"
+          class="flex items-center gap-2">
+      {% csrf_token %}
+      <label for="id_current_value_{{ holding.pk }}" class="text-sm text-stone-600 whitespace-nowrap">
+        Current value of <span class="font-medium">{{ holding.asset.name }}</span> (₹)…
+      </label>
+      <input id="id_current_value_{{ holding.pk }}" name="current_value" type="number" step="0.01" inputmode="decimal"
+             value="{{ holding.current_value|default_if_none:'' }}" autocomplete="off"
+             class="rounded-lg border border-stone-300 px-2 py-1 w-36 tnum focus-visible:outline-2 focus-visible:outline-emerald-600">
+      <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Save</button>
+      <button type="button" hx-get="{% url 'update_value' holding.pk %}?cancel=1" hx-target="#holding-{{ holding.pk }}" hx-swap="outerHTML"
+              class="text-sm text-stone-400 hover:text-stone-600 focus-visible:outline-2 focus-visible:outline-emerald-600 rounded">Cancel</button>
+    </form>
+  </td>
+</tr>

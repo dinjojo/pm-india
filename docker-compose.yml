@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    container_name: pm-india
+    restart: unless-stopped
+    ports:
+      - "8010:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DEBUG=false
+      - SECRET_KEY=${SECRET_KEY:-change-me}

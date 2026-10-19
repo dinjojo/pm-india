@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% load humanize inr %}
+{% block title %}Portfolio tools{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">Portfolio tools</h1>
+    <p class="text-stone-800 text-sm mt-1">Mean-variance optimisation, CAPM check, overlap and a basket screener — built on the full AMFI NAV history.</p>
+  </div>
+  <a href="#basket" class="text-sm font-medium text-emerald-800 hover:underline">Basket builder ↓</a>
+</div>
+
+{# ---------- 1. Input ---------- #}
+<div class="grid md:grid-cols-2 gap-4 mt-6">
+  <form method="post" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6">{% csrf_token %}
+    <input type="hidden" name="action" value="tracked">
+    <h2 class="text-lg font-semibold text-stone-900">Use my tracked mutual funds</h2>
+    <p class="text-sm text-stone-800 mt-1">One click: your mutual-fund holdings (current value per scheme, summed across folios) go straight into the analysis.</p>
+    <button class="mt-4 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Use my tracked mutual funds</button>
+  </form>
+
+  <form method="post" enctype="multipart/form-data" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6">{% csrf_token %}
+    <input type="hidden" name="action" value="csv">
+    <h2 class="text-lg font-semibold text-stone-900">Or upload a CSV</h2>
+    <p class="text-sm text-stone-800 mt-1">Header row required. Column 1 = AMFI scheme code, column 2 = amount in ₹; extra columns are ignored. Sample:</p>
+    <pre class="mt-2 bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-xs tnum text-stone-900">{{ sample_csv }}</pre>
+    <div class="flex flex-wrap items-center gap-3 mt-3">
+      <label class="text-sm font-medium text-stone-900">CSV file
+        <input type="file" name="file" accept=".csv,text/csv" class="block mt-1 text-sm"></label>
+    </div>
+    <details class="mt-3">
+      <summary class="text-sm text-emerald-800 font-medium cursor-pointer">…or paste CSV text</summary>
+      <textarea name="csv_text" rows="4" class="w-full mt-2 border border-stone-300 rounded-lg px-3 py-2 text-xs tnum" placeholder="{{ sample_csv }}">{{ csv_text }}</textarea>
+    </details>
+    <button class="mt-4 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Analyse CSV</button>
+  </form>
+</div>
+
+{% if input_errors or dropped or analysis_error %}
+<div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-stone-900" role="alert">
+  <p class="font-semibold text-amber-900">Input issues</p>
+  <ul class="list-disc list-inside mt-1 space-y-0.5">
+    {% for e in input_errors %}<li>{{ e }}</li>{% endfor %}
+    {% for d in dropped %}<li><span class="tnum font-medium">{{ d.code }}</span>{% if d.name %} — {{ d.name }}{% endif %}: dropped, {{ d.reason }}</li>{% endfor %}
+    {% if analysis_error %}<li class="font-medium">{{ analysis_error }}</li>{% endif %}
+  </ul>
+</div>
+{% endif %}
+
+{% if res %}
+{# ---------- 2. Results: fund table + MPT ---------- #}
+<section class="mt-8">
+  <h2 class="text-xl font-semibold text-stone-900">Your portfolio, optimised</h2>
+  <p class="text-sm text-stone-800 mt-1">From {{ source }} · {{ res.funds|length }} funds · common NAV window {{ res.window.start|date:"M Y" }} – {{ res.window.end|date:"M Y" }} ({{ res.window.years|floatformat:1 }} years, {{ res.window.obs|intcomma }} daily returns) · risk-free rate {{ rf_pct|floatformat:0 }}%{% if res.excluded_amount %} · {{ res.excluded_amount|inr_short }} in dropped funds excluded{% endif %}</p>
+  <p class="text-xs text-amber-800 bg-amber-100 rounded px-2 py-1 mt-2 w-fit">Estimates, not forecasts: expected returns and volatility are historical means/covariances over this window. Optimisers amplify estimation error — treat suggested weights as a direction, not a prescription.</p>
+
+  <div class="grid sm:grid-cols-3 gap-4 mt-4">
+    {% with p=res.portfolios.current %}
+    <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+      <p class="text-xs text-stone-800">Current weights</p>
+      <p class="text-2xl font-semibold tnum text-stone-900">{{ p.cagr_pct|floatformat:1 }}% <span class="text-sm font-medium text-stone-800">exp. CAGR</span></p>
+      <p class="text-xs text-stone-800 tnum">vol {{ p.vol_pct|floatformat:1 }}% · Sharpe {{ p.sharpe|floatformat:2 }}</p>
+    </div>
+    {% endwith %}
+    {% with p=res.portfolios.min_var %}
+    <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+      <p class="text-xs text-stone-800">Min-variance</p>
+      <p class="text-2xl font-semibold tnum text-stone-900">{{ p.cagr_pct|floatformat:1 }}% <span class="text-sm font-medium text-stone-800">exp. CAGR</span></p>
+      <p class="text-xs text-stone-800 tnum">vol {{ p.vol_pct|floatformat:1 }}% · Sharpe {{ p.sharpe|floatformat:2 }}</p>
+    </div>
+    {% endwith %}
+    {% with p=res.portfolios.max_sharpe %}
+    <div class="bg-emerald-50 rounded-xl border border-emerald-200 shadow-sm p-4">
+      <p class="text-xs text-stone-800">Max-Sharpe (suggested)</p>
+      <p class="text-2xl font-semibold tnum text-stone-900">{{ p.cagr_pct|floatformat:1 }}% <span class="text-sm font-medium text-stone-800">exp. CAGR</span></p>
+      <p class="text-xs text-stone-800 tnum">vol {{ p.vol_pct|floatformat:1 }}% · Sharpe {{ p.sharpe|floatformat:2 }}</p>
+    </div>
+    {% endwith %}
+  </div>
+
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4 mt-4 overflow-x-auto">
+    <table class="w-full text-sm tnum">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2 px-2 font-semibold">Fund</th>
+          <th class="py-2 px-2 font-semibold text-right">Amount</th>
+          <th class="py-2 px-2 font-semibold text-right">CAGR</th>
+          <th class="py-2 px-2 font-semibold text-right">Volatility</th>
+          <th class="py-2 px-2 font-semibold text-right">Current</th>
+          <th class="py-2 px-2 font-semibold text-right">Min-variance</th>
+          <th class="py-2 px-2 font-semibold text-right">Max-Sharpe</th>
+          <th class="py-2 px-2 font-semibold text-right">Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in res.funds %}
+        <tr class="border-b border-stone-100">
+          <td class="py-2 px-2"><a href="{% url 'fund_detail' f.code %}" class="text-stone-900 hover:underline">{{ f.name }}</a> <span class="text-xs text-stone-600">{{ f.code }}</span></td>
+          <td class="py-2 px-2 text-right">{{ f.amount|inr_short }}</td>
+          <td class="py-2 px-2 text-right">{{ f.cagr_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 text-right">{{ f.vol_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 text-right">{{ f.weight_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 text-right">{{ f.min_var_weight_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 text-right font-semibold">{{ f.max_sharpe_weight_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 text-right {% if f.ms_delta_pct >= 0 %}positive{% else %}negative{% endif %}">{% if f.ms_delta_pct > 0 %}+{% endif %}{{ f.ms_delta_pct|floatformat:1 }} pp</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="text-xs text-stone-700 mt-2">CAGR and volatility over the common window. Portfolio "exp. CAGR" ≈ mean annual return − variance/2. Long-only, fully invested; no transaction costs or exit loads/taxes on rebalancing considered.</p>
+    {% if near_cash %}
+    <p class="text-xs text-amber-800 mt-1">Note: {{ near_cash|join:", " }} {{ near_cash|length|pluralize:"has,have" }} almost no volatility and returns near the {{ rf_pct|floatformat:0 }}% risk-free rate, so the Sharpe ratio rewards {{ near_cash|length|pluralize:"it,them" }} heavily — a known mean-variance artefact. Read max-Sharpe as "risk-efficient", not "growth-maximising".</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4 mt-4">
+    <h3 class="font-semibold text-stone-900">Efficient frontier</h3>
+    <p class="text-xs text-stone-800">Best historical return for each level of volatility (30 long-only portfolios), with your three portfolios and individual funds.</p>
+    <div class="mt-2" style="height:320px;position:relative"><canvas id="frontier" aria-label="Efficient frontier chart" role="img"></canvas></div>
+  </div>
+</section>
+
+{# ---------- 3. CAPM ---------- #}
+<section class="mt-8">
+  <h2 class="text-xl font-semibold text-stone-900">CAPM evaluation</h2>
+  {% if res.benchmark %}
+  <p class="text-sm text-stone-800 mt-1">Beta vs the {{ res.benchmark.name }} on daily returns, {{ res.benchmark.start|date:"M Y" }} – {{ res.benchmark.end|date:"M Y" }}; market CAGR {{ res.benchmark.cagr_pct|floatformat:1 }}%. CAPM expected = {{ rf_pct|floatformat:0 }}% + β × (market − {{ rf_pct|floatformat:0 }}%).</p>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4 mt-3 overflow-x-auto">
+    <table class="w-full text-sm tnum">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2 px-2 font-semibold">Fund</th>
+          <th class="py-2 px-2 font-semibold text-right">Beta</th>
+          <th class="py-2 px-2 font-semibold text-right">CAPM expected</th>
+          <th class="py-2 px-2 font-semibold text-right">Actual CAGR</th>
+          <th class="py-2 px-2 font-semibold">Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in res.funds %}{% if f.capm %}
+        <tr class="border-b border-stone-100">
+          <td class="py-2 px-2 text-stone-900">{{ f.name }}</td>
+          <td class="py-2 px-2 text-right">{{ f.capm.beta|floatformat:2 }}</td>
+          <td class="py-2 px-2 text-right">{{ f.capm.expected_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 text-right">{{ f.cagr_pct|floatformat:1 }}%</td>
+          <td class="py-2 px-2 font-medium {% if f.capm.alpha >= 0 %}positive{% else %}negative{% endif %}">{{ f.capm.verdict }}</td>
+        </tr>
+        {% endif %}{% endfor %}
+      </tbody>
+    </table>
+    <p class="text-xs text-stone-700 mt-2">Low-beta debt/liquid funds are judged against the risk-free rate; international or gold funds have betas that say little about their risk. Past alpha does not persist reliably.</p>
+  </div>
+  {% else %}
+  <p class="text-sm text-stone-800 mt-1">CAPM unavailable — the NIFTY benchmark history could not be loaded (needs one-time network access to NSE).</p>
+  {% endif %}
+</section>
+
+{# ---------- 4. Overlap ---------- #}
+<section class="mt-8">
+  <h2 class="text-xl font-semibold text-stone-900">Overlap</h2>
+  <p class="text-sm text-stone-800 mt-1">R² of monthly returns between each pair ({{ res.overlap.months }} months) — based on return co-movement; true stock-level overlap needs a holdings feed. Green = moves independently, red = moves together.</p>
+  {% if redundant %}
+  <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900">
+    {% for p in redundant %}<p>⚠ Redundancy flag: <span class="font-semibold">{{ p.a_name }}</span> and <span class="font-semibold">{{ p.b_name }}</span> — R² {{ p.r2|floatformat:2 }}; one of them adds little diversification.</p>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4 mt-3 overflow-x-auto">
+    <table class="text-xs tnum">
+      <thead>
+        <tr class="text-stone-800">
+          <th class="py-2 px-2"></th>
+          {% for r in overlap_rows %}<th class="py-2 px-2 font-semibold text-center max-w-52 truncate" title="{{ r.name }}">{{ forloop.counter }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in overlap_rows %}
+        <tr>
+          <th class="py-1.5 px-2 text-left font-medium text-stone-900 whitespace-nowrap">{{ forloop.counter }}. {{ r.name|truncatechars:48 }}</th>
+          {% for c in r.cells %}
+          <td class="py-1.5 px-2 text-center text-stone-900" style="{{ c.style }}; border: 1px solid #fff" title="R² {{ c.r2|floatformat:2 }} · correlation {{ c.corr|floatformat:2 }}">{% if c.diag %}—{% else %}{{ c.r2|floatformat:2 }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="text-xs text-stone-700 mt-2">Pairs above R² 0.90 are flagged redundant.</p>
+  </div>
+</section>
+{% endif %}
+
+{# ---------- 5. Basket builder ---------- #}
+<section id="basket" class="mt-10 scroll-mt-28">
+  <h2 class="text-xl font-semibold text-stone-900">Curated basket builder</h2>
+  <p class="text-sm text-stone-800 mt-1">A screening tool, not advice: picks 4–6 established direct-growth funds from a ~150-scheme pool by Sharpe ratio, skipping funds that are ≥ 0.85 correlated with what's already in, and weights them to hit your target within your volatility cap (5y weekly history).</p>
+  <form method="post" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-3 flex flex-wrap items-center gap-4">{% csrf_token %}
+    <input type="hidden" name="action" value="basket">
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Target annual return %
+      <input name="target_return" type="number" step="0.5" min="0" max="40" value="{{ basket_form.target_return }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum w-32"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Max annual volatility %
+      <input name="max_vol" type="number" step="0.5" min="0.5" max="60" value="{{ basket_form.max_vol }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum w-32"></label>
+    <fieldset class="text-sm text-stone-900">
+      <legend class="font-medium mb-1">Categories</legend>
+      <div class="flex gap-4">
+      {% for key, label in categories %}
+        <label class="flex items-center gap-2"><input type="checkbox" name="categories" value="{{ key }}" class="w-4 h-4" {% if key in basket_form.categories %}checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+      </div>
+    </fieldset>
+    <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Build basket</button>
+  </form>
+
+  {% if basket %}
+    {% if basket.funds %}
+    <div class="mt-4 rounded-xl border p-4 text-sm {% if basket.meets_target %}bg-emerald-50 border-emerald-200 text-emerald-900{% else %}bg-amber-50 border-amber-200 text-amber-900{% endif %}" role="status">
+      {% if basket.meets_target %}
+        <p class="font-semibold">✓ Meets your {{ basket.target_pct|floatformat:1 }}% target: expected {{ basket.ret_pct|floatformat:1 }}% at {{ basket.vol_pct|floatformat:1 }}% volatility (cap {{ basket.max_vol_pct|floatformat:1 }}%).</p>
+      {% else %}
+        <p class="font-semibold">Falls {{ basket.gap_pct|floatformat:1 }} pp short of your {{ basket.target_pct|floatformat:1 }}% target: best found is {{ basket.ret_pct|floatformat:1 }}% at {{ basket.vol_pct|floatformat:1 }}% volatility (cap {{ basket.max_vol_pct|floatformat:1 }}%). Raise the volatility cap or lower the target.</p>
+      {% endif %}
+    </div>
+    <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4 mt-3 overflow-x-auto">
+      <table class="w-full text-sm tnum">
+        <thead>
+          <tr class="text-left text-stone-800 border-b border-stone-300">
+            <th class="py-2 px-2 font-semibold">Fund</th>
+            <th class="py-2 px-2 font-semibold">Category</th>
+            <th class="py-2 px-2 font-semibold text-right">Weight</th>
+            <th class="py-2 px-2 font-semibold text-right">5y CAGR</th>
+            <th class="py-2 px-2 font-semibold text-right">Volatility</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in basket.funds %}
+          <tr class="border-b border-stone-100">
+            <td class="py-2 px-2"><a href="{% url 'fund_detail' f.code %}" class="text-stone-900 hover:underline">{{ f.name }}</a> <span class="text-xs text-stone-600">{{ f.code }}</span></td>
+            <td class="py-2 px-2">{{ f.category|capfirst }}</td>
+            <td class="py-2 px-2 text-right font-semibold">{{ f.weight_pct|floatformat:1 }}%</td>
+            <td class="py-2 px-2 text-right">{{ f.cagr_pct|floatformat:1 }}%</td>
+            <td class="py-2 px-2 text-right">{{ f.vol_pct|floatformat:1 }}%</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="text-xs text-stone-700 mt-2">Screening tool, not advice. Pool: {{ basket.pool_size }} schemes ({{ basket.categories|join:", " }}); {{ basket.skipped.correlated }} skipped as too correlated, {{ basket.skipped.too_volatile }} as too volatile. Expected return/volatility are 5-year historical estimates; check expense ratio, AUM, and fund-manager changes before investing.</p>
+    </div>
+    {% else %}
+    <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{{ basket.message }}</p>
+    {% endif %}
+  {% endif %}
+</section>
+
+{% if chart %}{{ chart|json_script:"pt-chart" }}{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if chart %}
+<script>
+(() => {
+  const c = JSON.parse(document.getElementById('pt-chart').textContent);
+  const pct = v => v.toFixed(1) + '%';
+  new Chart(document.getElementById('frontier'), {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'Efficient frontier', data: c.frontier, showLine: true, borderColor: '#047857', backgroundColor: '#047857', pointRadius: 2, borderWidth: 2, tension: .2 },
+      { label: 'Funds', data: c.funds, borderColor: '#78716c', backgroundColor: 'rgba(120,113,108,.5)', pointRadius: 5 },
+      { label: 'Current', data: c.current, borderColor: '#b45309', backgroundColor: '#b45309', pointRadius: 8, pointStyle: 'rectRot' },
+      { label: 'Min-variance', data: c.min_var, borderColor: '#0369a1', backgroundColor: '#0369a1', pointRadius: 8, pointStyle: 'triangle' },
+      { label: 'Max-Sharpe', data: c.max_sharpe, borderColor: '#065f46', backgroundColor: '#065f46', pointRadius: 9, pointStyle: 'star', borderWidth: 2 }
+    ] },
+    options: { maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#1c1917', boxWidth: 12 } },
+        tooltip: { callbacks: { label: i => (i.raw.label || i.dataset.label) + ': return ' + pct(i.parsed.y) + ', vol ' + pct(i.parsed.x) } } },
+      scales: { x: { title: { display: true, text: 'Annual volatility', color: '#44403c' }, ticks: { color: '#44403c', callback: v => v + '%' } },
+                y: { title: { display: true, text: 'Expected annual return', color: '#44403c' }, ticks: { color: '#44403c', callback: v => v + '%' } } } }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

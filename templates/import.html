@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold">Import</h1>
+<p class="text-stone-500 text-sm mt-1 max-w-3xl">
+  Bring in what you already own — parsing happens locally, nothing leaves this machine.
+</p>
+
+<div class="flex gap-2 mt-6" role="tablist">
+  <a href="#cas" id="tab-cas" onclick="showTab('cas')" class="text-sm px-4 py-2 rounded-lg border bg-white border-stone-200 text-stone-600">Mutual Funds (CAS PDF)</a>
+  <a href="#broker" id="tab-broker" onclick="showTab('broker')" class="text-sm px-4 py-2 rounded-lg border bg-white border-stone-200 text-stone-600">Broker / Distributor (CSV)</a>
+  <a href="#bank" id="tab-bank" onclick="showTab('bank')" class="text-sm px-4 py-2 rounded-lg border bg-white border-stone-200 text-stone-600">Bank Statement (CSV)</a>
+</div>
+
+<div id="pane-cas" class="mt-4">
+  <div class="bg-white rounded-xl border border-stone-200 p-6 max-w-2xl">
+    <p class="text-stone-500 text-sm mb-4">
+      The consolidated account statement from CAMS or KFintech covers <b>all your mutual funds across AMCs</b>,
+      plus demat holdings from NSDL/CDSL — one file, every fund.
+    </p>
+    {% if cas_result %}
+      <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm mb-4" role="status">
+        Imported <b>{{ cas_result.transactions_created }}</b> transactions across <b>{{ cas_result.folios }}</b> folios.
+      </div>
+    {% endif %}
+    {% if error %}<div class="rounded-lg bg-red-50 border border-red-200 p-4 text-sm mb-4" role="alert">{{ error }}</div>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      <div>
+        <label for="id_cas_pdf" class="block text-sm font-medium mb-1">CAS PDF</label>
+        <input type="file" id="id_cas_pdf" name="cas_pdf" accept=".pdf" required
+               class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+      </div>
+      <div>
+        <label for="id_cas_pw" class="block text-sm font-medium mb-1">PDF password <span class="text-stone-400">(your PAN, lowercase — or leave blank if none)</span></label>
+        <input type="password" id="id_cas_pw" name="password" class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+      </div>
+      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import CAS Statement</button>
+    </form>
+  </div>
+</div>
+
+<div id="pane-broker" class="mt-4 hidden">
+  <div class="bg-white rounded-xl border border-stone-200 p-6 max-w-3xl">
+    <p class="text-stone-500 text-sm mb-4">
+      Export your holdings from the provider below and upload the CSV. Columns are matched automatically;
+      re-importing the same file never creates duplicates.
+    </p>
+    {% if broker_result %}
+      <div class="rounded-lg {% if broker_result.errors %}bg-amber-50 border-amber-200{% else %}bg-emerald-50 border-emerald-200{% endif %} border p-4 text-sm mb-4" role="status">
+        {% if broker_result.transactions_created %}
+          Imported <b>{{ broker_result.holdings_created }}</b> holding{{ broker_result.holdings_created|pluralize }}
+          ({{ broker_result.asset_names|join:", "|truncatechars:160 }}) — {{ broker_result.transactions_created }} transactions.
+        {% endif %}
+        {% for e in broker_result.errors %}<p class="mt-1 text-amber-800">{{ e }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      <div>
+        <label for="id_provider" class="block text-sm font-medium mb-1">Provider</label>
+        <select id="id_provider" name="provider"
+                class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
+          {% for p in providers %}<option value="{{ p.key }}">{{ p.name }}</option>{% endfor %}
+        </select>
+        <p class="text-xs text-stone-400 mt-1" id="provider_help"></p>
+      </div>
+      <div>
+        <label for="id_csv" class="block text-sm font-medium mb-1">Holdings CSV</label>
+        <input type="file" id="id_csv" name="csv_file" accept=".csv" required
+               class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+      </div>
+      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import Holdings CSV</button>
+    </form>
+  </div>
+</div>
+
+<div id="pane-bank" class="mt-4 hidden">
+  <div class="bg-white rounded-xl border border-stone-200 p-6 max-w-3xl">
+    <p class="text-stone-500 text-sm mb-4">
+      Upload a CSV/TSV statement export — every credit becomes a deposit, every debit a withdrawal,
+      and the closing balance sets the account's value. Formats auto-detected: HDFC, ICICI, Yes Bank, or generic.
+    </p>
+    {% if bank_result %}
+      <div class="rounded-lg {% if bank_result.errors %}bg-amber-50 border-amber-200{% else %}bg-emerald-50 border-emerald-200{% endif %} border p-4 text-sm mb-4" role="status">
+        {% if bank_result.transactions_created %}
+          <b>{{ bank_result.account_name }}</b>: {{ bank_result.transactions_created }} transaction{{ bank_result.transactions_created|pluralize }} imported.
+          {% if bank_result.closing_balance %}Closing balance ₹{{ bank_result.closing_balance|intcomma }} — set as the account's current value.{% endif %}
+        {% endif %}
+        {% for e in bank_result.errors %}<p class="mt-1 text-amber-800">{{ e }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    <form method="post" enctype="multipart/form-data" class="space-y-4">
+      {% csrf_token %}
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label for="id_bank" class="block text-sm font-medium mb-1">Bank</label>
+          <select id="id_bank" name="bank"
+                  class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
+            {% for b in banks %}<option value="{{ b.key }}">{{ b.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="id_bank_acct" class="block text-sm font-medium mb-1">Account name…</label>
+          <input id="id_bank_acct" name="account_name" autocomplete="off" placeholder="e.g. HDFC Savings ****4821…"
+                 class="w-full rounded-lg border border-stone-300 px-3 py-2 focus-visible:outline-2 focus-visible:outline-emerald-600">
+        </div>
+      </div>
+      <div>
+        <label for="id_bank_csv" class="block text-sm font-medium mb-1">Statement CSV</label>
+        <input type="file" id="id_bank_csv" name="csv_file" accept=".csv,.txt,.tsv" required
+               class="block w-full text-sm border border-stone-200 rounded-lg p-2">
+      </div>
+      <button class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import Bank Statement</button>
+    </form>
+  </div>
+</div>
+
+<script>
+const HELP = {
+  {% for p in providers %}"{{ p.key }}": "Where to find it: {{ p.help }}"{% if not forloop.last %},{% endif %}{% endfor %}
+};
+function showTab(which) {
+  document.getElementById('pane-cas').classList.toggle('hidden', which !== 'cas');
+  document.getElementById('pane-broker').classList.toggle('hidden', which !== 'broker');
+  document.getElementById('pane-bank').classList.toggle('hidden', which !== 'bank');
+  const active = 'bg-emerald-600 text-white border-emerald-600';
+  const idle = 'bg-white border-stone-200 text-stone-600';
+  ['cas','broker','bank'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    el.className = 'text-sm px-4 py-2 rounded-lg border ' + (t === which ? active : idle);
+  });
+  const h = document.getElementById('provider_help');
+  const sel = document.getElementById('id_provider');
+  if (h && sel) h.textContent = HELP[sel.value] ?? '';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('id_provider');
+  if (sel) sel.addEventListener('change', () => {
+    document.getElementById('provider_help').textContent = HELP[sel.value] ?? '';
+  });
+  showTab(location.hash === '#broker' ? 'broker' : 'cas');
+});
+</script>
+{% endblock %}

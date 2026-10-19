@@ -1,0 +1,14 @@
+django>=5,<7
+whitenoise>=6.5
+pyxirr>=0.10
+requests>=2.31
+casparser>=0.7.4
+gunicorn>=21
+pytesseract>=0.3.10
+Pillow>=10
+openpyxl>=3.1
+duckdb>=1.0
+pyarrow>=14
+numpy>=1.26
+pandas>=2.0
+jugaad-data>=0.24

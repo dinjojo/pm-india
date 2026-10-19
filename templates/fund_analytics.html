@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% load humanize inr %}
+{% block title %}{{ a.name }} · Analytics{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-baseline justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold text-stone-900">{{ a.name }}</h1>
+    <p class="text-stone-800 text-sm mt-1 tnum">
+      {{ a.fund_house }} · {{ a.group }} / {{ a.category }} · {{ a.plan }} · {{ a.payout }}
+      {% if a.start %} · NAV history {{ a.start }} → {{ a.end }}{% endif %}
+      {% if a.years %} ({{ a.years }} yrs){% endif %}
+      {% if a.isin %} · ISIN {{ a.isin }}{% endif %} · #{{ code }}
+    </p>
+  </div>
+  <div class="flex flex-wrap gap-3 text-sm">
+    <a href="{% url 'fund_detail' code %}" class="font-medium text-emerald-800 hover:underline">Fund Page →</a>
+    {% if calc_url %}<a href="{{ calc_url }}" class="font-medium text-emerald-800 hover:underline">Run This Through the Calculator →</a>{% endif %}
+    <a href="{% url 'funds' %}" class="font-medium text-emerald-800 hover:underline">← Browse Funds</a>
+  </div>
+</div>
+
+{% if not a.enough %}
+<div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mt-6 max-w-3xl">
+  <h2 class="font-semibold text-stone-900">Not Enough History</h2>
+  <p class="text-sm text-stone-900 mt-1">{{ a.reason }}</p>
+  {% if a.latest_nav %}<p class="text-sm text-stone-900 mt-2 tnum">Latest NAV ₹{{ a.latest_nav|floatformat:4 }} on {{ a.end }}.</p>{% endif %}
+  <p class="text-sm text-stone-900 mt-2">Risk, drawdown and Monte Carlo figures from a few months of NAVs would be noise. Check back once the scheme has a full year of prices.</p>
+</div>
+{% else %}
+
+{# ---------- Returns strip ---------- #}
+<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-4 mt-6">
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-sm text-stone-800">Latest NAV</p>
+    <p class="text-xl font-semibold tnum text-stone-900">₹{{ a.latest_nav|floatformat:2 }}</p>
+    <p class="text-xs text-stone-800 tnum">{{ a.end }}</p>
+  </div>
+  {% for k, v in a.returns.items %}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-4">
+    <p class="text-sm text-stone-800">{% if k == "Since inception" %}Since Inception CAGR{% elif k == "1Y" or k == "3Y" or k == "5Y" %}{{ k }} CAGR{% else %}{{ k }} Return{% endif %}</p>
+    <p class="text-xl font-semibold tnum {% if v is None %}text-stone-900{% elif v >= 0 %}positive{% else %}negative{% endif %}">
+      {% if v is None %}—{% else %}{{ v|floatformat:2 }}%{% endif %}
+    </p>
+  </div>
+  {% endfor %}
+</div>
+
+{# ---------- NAV chart + drawdown ---------- #}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 min-w-0">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h2 class="text-sm font-semibold text-stone-900">NAV With 50-DMA and 200-DMA</h2>
+    {% if a.ma.signal %}
+    <div class="flex items-center gap-2 text-sm">
+      <span class="rounded-full px-3 py-1 text-xs font-semibold {% if a.ma.signal == 'BUY' %}bg-emerald-800 text-white{% elif a.ma.signal == 'SELL' %}bg-red-50 text-red-900 border border-red-200{% else %}bg-amber-100 text-amber-800{% endif %}">
+        {% if a.ma.signal == 'HOLD' %}HOLD / ACCUMULATE{% else %}{{ a.ma.signal }}{% endif %}
+      </span>
+      <span class="text-stone-800 tnum">
+        NAV ₹{{ a.ma.nav|floatformat:2 }} · 50-DMA ₹{{ a.ma.ma50|floatformat:2 }} · 200-DMA ₹{{ a.ma.ma200|floatformat:2 }}
+        {% if a.ma.last_cross_date %} · last {% if a.ma.last_cross_type == 'golden' %}golden cross{% else %}death cross{% endif %} {{ a.ma.last_cross_date }}{% endif %}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+  <div style="height:320px;position:relative" class="mt-3"><canvas id="navchart" role="img" aria-label="NAV line chart with 50 and 200 day moving averages"></canvas></div>
+  <h3 class="text-xs font-semibold text-stone-900 mt-4">Drawdown (Underwater)</h3>
+  <div style="height:140px;position:relative"><canvas id="ddchart" role="img" aria-label="Underwater drawdown area chart"></canvas></div>
+  <p class="text-xs text-stone-800 mt-2">
+    Signal rule: BUY when the 50-DMA is above the 200-DMA and NAV is above the 200-DMA; SELL (death cross regime) when both are below; otherwise HOLD / ACCUMULATE. A trend heuristic, not advice.
+  </p>
+</div>
+
+<div class="grid xl:grid-cols-3 gap-6 mt-6 items-start">
+  {# ---------- Risk metrics ---------- #}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0 xl:col-span-2">
+    <h2 class="text-sm font-semibold text-stone-900">Risk and Risk-Adjusted Returns</h2>
+    <p class="text-xs text-stone-800 mt-1">From {{ a.risk.days|intcomma }} daily returns, annualised over 252 trading days. Risk-free rate {{ a.rf_pct|floatformat:1 }}%.</p>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 tnum">
+      <div><p class="text-sm text-stone-800">Volatility</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.volatility|floatformat:2 }}%</p></div>
+      <div><p class="text-sm text-stone-800">Sharpe</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.sharpe|floatformat:2|default:"—" }}</p></div>
+      <div><p class="text-sm text-stone-800">Sortino</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.sortino|floatformat:2|default:"—" }}</p></div>
+      <div><p class="text-sm text-stone-800">Omega</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.omega|floatformat:2|default:"—" }}</p></div>
+      <div><p class="text-sm text-stone-800">Max Drawdown</p><p class="text-lg font-semibold negative">{{ a.risk.max_drawdown|floatformat:2 }}%</p></div>
+      <div><p class="text-sm text-stone-800">Calmar</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.calmar|floatformat:2|default:"—" }}</p></div>
+      <div><p class="text-sm text-stone-800">Skewness</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.skewness|floatformat:2 }}</p></div>
+      <div><p class="text-sm text-stone-800">Excess Kurtosis</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.kurtosis|floatformat:2 }}</p></div>
+      <div><p class="text-sm text-stone-800">Best Day</p><p class="text-lg font-semibold positive">{{ a.risk.best_day|floatformat:2 }}%</p><p class="text-xs text-stone-800">{{ a.risk.best_day_date }}</p></div>
+      <div><p class="text-sm text-stone-800">Worst Day</p><p class="text-lg font-semibold negative">{{ a.risk.worst_day|floatformat:2 }}%</p><p class="text-xs text-stone-800">{{ a.risk.worst_day_date }}</p></div>
+      <div><p class="text-sm text-stone-800">Positive Days</p><p class="text-lg font-semibold text-stone-900">{{ a.risk.positive_day_pct|floatformat:1 }}%</p></div>
+      <div><p class="text-sm text-stone-800">Observations</p><p class="text-lg font-semibold text-stone-900">{{ a.observations|intcomma }}</p></div>
+    </div>
+    {% if a.risk.dd_peak %}
+    <p class="text-sm text-stone-900 mt-4 tnum">
+      Worst fall: peak {{ a.risk.dd_peak }} → trough {{ a.risk.dd_trough }} →
+      {% if a.risk.dd_recovery %}recovered {{ a.risk.dd_recovery }} ({{ a.risk.dd_days_to_recover|intcomma }} days peak-to-recovery){% else %}not yet recovered{% endif %}.
+    </p>
+    {% endif %}
+  </div>
+
+  {# ---------- CAPM ---------- #}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
+    <h2 class="text-sm font-semibold text-stone-900">CAPM vs {{ a.capm.benchmark|default:"Benchmark" }}</h2>
+    {% if a.capm.ok %}
+    <div class="mt-3 rounded-lg px-4 py-3 text-sm font-semibold {% if a.capm.verdict == 'beating' %}bg-emerald-50 text-emerald-900{% else %}bg-red-50 text-red-900{% endif %} tnum">
+      {% if a.capm.verdict == 'beating' %}Beating its CAPM expected return by {{ a.capm.alpha|floatformat:2 }}%{% else %}Underperforming its CAPM expected return by {{ a.capm.alpha|floatformat:2|cut:"-" }}%{% endif %} a year
+    </div>
+    <dl class="grid grid-cols-2 gap-3 mt-4 text-sm tnum">
+      <div><dt class="text-stone-800">Beta</dt><dd class="text-lg font-semibold text-stone-900">{{ a.capm.beta|floatformat:2 }}</dd></div>
+      <div><dt class="text-stone-800">Alpha (Jensen)</dt><dd class="text-lg font-semibold {% if a.capm.alpha >= 0 %}positive{% else %}negative{% endif %}">{{ a.capm.alpha|floatformat:2 }}%</dd></div>
+      <div><dt class="text-stone-800">Fund CAGR</dt><dd class="text-lg font-semibold text-stone-900">{{ a.capm.fund_cagr|floatformat:2 }}%</dd></div>
+      <div><dt class="text-stone-800">Benchmark CAGR</dt><dd class="text-lg font-semibold text-stone-900">{{ a.capm.bench_cagr|floatformat:2 }}%</dd></div>
+      <div><dt class="text-stone-800">CAPM Expected</dt><dd class="text-lg font-semibold text-stone-900">{{ a.capm.expected|floatformat:2 }}%</dd></div>
+      <div><dt class="text-stone-800">Correlation (R²)</dt><dd class="text-lg font-semibold text-stone-900">{{ a.capm.correlation|floatformat:2 }} ({{ a.capm.r2|floatformat:2 }})</dd></div>
+    </dl>
+    <p class="text-xs text-stone-800 mt-3 tnum">Expected = rf + β × (benchmark CAGR − rf), rf {{ a.rf_pct|floatformat:1 }}%, over {{ a.capm.start }} → {{ a.capm.end }} on daily returns.</p>
+    {% else %}
+    <p class="text-sm text-stone-900 mt-2">CAPM comparison unavailable: {{ a.capm.reason }}</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6 mt-6 items-start">
+  {# ---------- Rolling volatility ---------- #}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
+    <h2 class="text-sm font-semibold text-stone-900">Rolling 1-Year Volatility</h2>
+    <div style="height:220px;position:relative" class="mt-3"><canvas id="volchart" role="img" aria-label="Rolling one-year annualised volatility line chart"></canvas></div>
+  </div>
+
+  {# ---------- Drawdown episodes ---------- #}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0 overflow-x-auto">
+    <h2 class="text-sm font-semibold text-stone-900">Five Worst Drawdowns</h2>
+    {% if a.drawdowns %}
+    <table class="w-full text-sm mt-3 tnum">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2 font-semibold">Peak</th>
+          <th class="py-2 font-semibold">Trough</th>
+          <th class="py-2 font-semibold">Recovery</th>
+          <th class="py-2 font-semibold text-right">Depth</th>
+          <th class="py-2 font-semibold text-right">Length</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in a.drawdowns %}
+        <tr class="border-t border-stone-200">
+          <td class="py-2 text-stone-900">{{ e.peak }}</td>
+          <td class="py-2 text-stone-900">{{ e.trough }}</td>
+          <td class="py-2 text-stone-900">{% if e.recovery %}{{ e.recovery }}{% else %}Ongoing{% endif %}</td>
+          <td class="py-2 text-right negative">{{ e.depth|floatformat:2 }}%</td>
+          <td class="py-2 text-right text-stone-900">{{ e.length_days|intcomma }} days</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="text-sm text-stone-900 mt-2">No drawdowns — the NAV never fell below a previous high.</p>{% endif %}
+  </div>
+</div>
+
+{# ---------- Monte Carlo ---------- #}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 min-w-0">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h2 class="text-sm font-semibold text-stone-900">Monte Carlo Value at Risk (1 Year)</h2>
+      <p class="text-xs text-stone-800 mt-1">{{ a.mc.paths|intcomma }} one-year paths built by resampling this fund's historical daily returns. A statistical estimate, not a forecast — past volatility can understate future risk.</p>
+    </div>
+    <form method="get" class="flex items-center gap-2">
+      <label class="text-sm text-stone-900">Lumpsum (₹)
+        <input type="number" name="amount" min="1000" step="1000" value="{{ amount_str }}"
+               class="block mt-1 w-40 rounded-lg border border-stone-300 bg-white px-3 py-2 tnum focus-visible:outline-2 focus-visible:outline-emerald-800">
+      </label>
+      <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Simulate</button>
+    </form>
+  </div>
+  <div class="grid xl:grid-cols-3 gap-6 mt-4">
+    <div class="tnum">
+      <p class="text-sm text-stone-900">On {{ amount|inr_short }} invested for one year:</p>
+      <table class="w-full text-sm mt-2">
+        <thead><tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2 font-semibold">Measure</th><th class="py-2 font-semibold text-right">Loss</th><th class="py-2 font-semibold text-right">%</th></tr></thead>
+        <tbody>
+          <tr class="border-t border-stone-200"><td class="py-2 text-stone-900">95% VaR</td>
+            <td class="py-2 text-right text-stone-900">{% if mc_inr.var95_inr > 0 %}{{ mc_inr.var95_inr|inr_short }}{% else %}No loss{% endif %}</td>
+            <td class="py-2 text-right text-stone-900">{{ a.mc.var95_pct|floatformat:2 }}%</td></tr>
+          <tr class="border-t border-stone-200"><td class="py-2 text-stone-900">95% Expected Shortfall</td>
+            <td class="py-2 text-right text-stone-900">{% if mc_inr.cvar95_inr > 0 %}{{ mc_inr.cvar95_inr|inr_short }}{% else %}No loss{% endif %}</td>
+            <td class="py-2 text-right text-stone-900">{{ a.mc.cvar95_pct|floatformat:2 }}%</td></tr>
+          <tr class="border-t border-stone-200"><td class="py-2 text-stone-900">99% VaR</td>
+            <td class="py-2 text-right text-stone-900">{% if mc_inr.var99_inr > 0 %}{{ mc_inr.var99_inr|inr_short }}{% else %}No loss{% endif %}</td>
+            <td class="py-2 text-right text-stone-900">{{ a.mc.var99_pct|floatformat:2 }}%</td></tr>
+          <tr class="border-t border-stone-200"><td class="py-2 text-stone-900">99% Expected Shortfall</td>
+            <td class="py-2 text-right text-stone-900">{% if mc_inr.cvar99_inr > 0 %}{{ mc_inr.cvar99_inr|inr_short }}{% else %}No loss{% endif %}</td>
+            <td class="py-2 text-right text-stone-900">{{ a.mc.cvar99_pct|floatformat:2 }}%</td></tr>
+        </tbody>
+      </table>
+      <p class="text-sm text-stone-900 mt-3">Median outcome {{ mc_inr.median_value|inr_short }} ({{ a.mc.median_pct|floatformat:1 }}%); 95th percentile {{ mc_inr.p95_value|inr_short }}. Chance of any loss: {{ a.mc.prob_loss_pct|floatformat:1 }}%.</p>
+      <p class="text-xs text-stone-800 mt-2">VaR: the loss exceeded in only 5% (or 1%) of simulated years. Expected Shortfall: the average loss within that worst tail.</p>
+    </div>
+    <div class="xl:col-span-2 min-w-0">
+      <div style="height:240px;position:relative"><canvas id="mchist" role="img" aria-label="Histogram of simulated one-year returns"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<p class="text-sm text-stone-800 mt-4">
+  Computed from AMFI daily NAVs; cached for 24 hours. Want to see what a return like this compounds to?
+  <a class="text-emerald-800 font-medium hover:underline" href="{{ calc_url }}">SIP at {{ calc_rate }}% →</a>
+  <a class="text-emerald-800 font-medium hover:underline ml-2" href="{{ calc_url_lumpsum }}">Lumpsum at {{ calc_rate }}% →</a>
+</p>
+
+{{ charts|json_script:"fa-data" }}
+<script>
+(() => {
+const D = JSON.parse(document.getElementById('fa-data').textContent);
+const fmtD = s => new Date(s).toLocaleDateString('en-IN', {month: 'short', year: '2-digit'});
+const axisX = { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 }, color: '#44403c' } };
+const axisY = extra => Object.assign({ border: { display: false }, grid: { color: '#f5f5f4' }, position: 'right',
+  ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#44403c' } }, extra || {});
+const tip = { backgroundColor: '#1c1917', padding: 10 };
+const base = { animation: false, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } };
+const labels = D.chart.dates.map(fmtD);
+
+new Chart(document.getElementById('navchart'), {
+  type: 'line',
+  data: { labels, datasets: [
+    { label: 'NAV', data: D.chart.nav, borderColor: '#059669', borderWidth: 2, backgroundColor: 'rgba(5,150,105,0.08)', fill: true, tension: 0.2, pointRadius: 0 },
+    { label: '50-DMA', data: D.chart.ma50, borderColor: '#d97706', borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: true },
+    { label: '200-DMA', data: D.chart.ma200, borderColor: '#1c1917', borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, tension: 0.2, spanGaps: true },
+  ]},
+  options: Object.assign({}, base, { scales: { x: axisX, y: axisY() },
+    plugins: { legend: { labels: { boxWidth: 12, color: '#1c1917', font: { size: 11 } } },
+      tooltip: Object.assign({}, tip, { callbacks: { title: i => D.chart.dates[i[0].dataIndex],
+        label: c => c.dataset.label + ' ₹' + (c.parsed.y == null ? '—' : c.parsed.y.toFixed(2)) } }) } })
+});
+
+new Chart(document.getElementById('ddchart'), {
+  type: 'line',
+  data: { labels, datasets: [{ label: 'Drawdown', data: D.chart.drawdown, borderColor: '#b91c1c', borderWidth: 1,
+    backgroundColor: 'rgba(185,28,28,0.18)', fill: 'origin', pointRadius: 0, tension: 0.1 }]},
+  options: Object.assign({}, base, { scales: { x: axisX, y: axisY({ max: 0, ticks: { maxTicksLimit: 4, font: { size: 10 }, color: '#44403c', callback: v => v + '%' } }) },
+    plugins: { legend: { display: false }, tooltip: Object.assign({}, tip, { callbacks: { title: i => D.chart.dates[i[0].dataIndex], label: c => 'Drawdown ' + c.parsed.y.toFixed(2) + '%' } }) } })
+});
+
+new Chart(document.getElementById('volchart'), {
+  type: 'line',
+  data: { labels: D.rolling_vol.dates.map(fmtD), datasets: [{ label: 'Rolling 1Y volatility', data: D.rolling_vol.vol,
+    borderColor: '#7c3aed', borderWidth: 1.5, pointRadius: 0, tension: 0.2 }]},
+  options: Object.assign({}, base, { scales: { x: axisX, y: axisY({ ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#44403c', callback: v => v + '%' } }) },
+    plugins: { legend: { display: false }, tooltip: Object.assign({}, tip, { callbacks: { title: i => D.rolling_vol.dates[i[0].dataIndex], label: c => 'Volatility ' + c.parsed.y.toFixed(2) + '%' } }) } })
+});
+
+new Chart(document.getElementById('mchist'), {
+  type: 'bar',
+  data: { labels: D.hist_labels.map(v => v.toFixed(0) + '%'), datasets: [{ label: 'Simulated paths', data: D.hist_counts,
+    backgroundColor: D.hist_labels.map(v => v < 0 ? 'rgba(185,28,28,0.75)' : 'rgba(5,150,105,0.75)'), borderWidth: 0, barPercentage: 1, categoryPercentage: 1 }]},
+  options: { animation: false, maintainAspectRatio: false,
+    scales: { x: Object.assign({}, axisX, { title: { display: true, text: 'Simulated 1-year return', color: '#1c1917', font: { size: 11 } } }), y: axisY() },
+    plugins: { legend: { display: false }, tooltip: Object.assign({}, tip, { callbacks: { title: i => 'Return ≈ ' + D.hist_labels[i[0].dataIndex] + '%', label: c => c.parsed.y.toLocaleString('en-IN') + ' paths' } }) } }
+});
+})();
+</script>
+{% endif %}
+{% endblock %}

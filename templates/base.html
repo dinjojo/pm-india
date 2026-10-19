@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafaf9">
+  <title>{% block title %}Portfolio{% endblock %} · PM India</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2"></script>
+</head>
+<body class="bg-stone-100 text-stone-900 min-h-screen text-[15px]">
+{% if user.is_authenticated %}
+<nav class="bg-white border-b border-stone-300 shadow-sm">
+  <div class="max-w-[1500px] mx-auto px-6 h-14 flex items-center gap-6">
+    <a href="{% url 'dashboard' %}" class="font-semibold tracking-tight">PM<span class="text-emerald-700">India</span></a>
+    <a href="{% url 'dashboard' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'dashboard' %}font-semibold text-stone-950{% endif %}">Dashboard</a>
+    <a href="{% url 'holdings' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'holdings' %}font-semibold text-stone-950{% endif %}">Holdings</a>
+    <a href="{% url 'tax' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'tax' %}font-semibold text-stone-950{% endif %}">Tax</a>
+    <a href="{% url 'funds' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'funds' or request.resolver_match.url_name == 'fund_detail' or request.resolver_match.url_name == 'scheme_analytics' %}font-semibold text-stone-950{% endif %}">Funds</a>
+    <a href="/funds/calculator/" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'returns_calculator' %}font-semibold text-stone-950{% endif %}">Calculator</a>
+    <a href="/tools/portfolio-tools/" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'portfolio_tools' %}font-semibold text-stone-950{% endif %}">Portfolio tools</a>
+    <a href="{% url 'goals' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'goals' or request.resolver_match.url_name == 'goal_detail' or request.resolver_match.url_name == 'goal_create' %}font-semibold text-stone-950{% endif %}">Goals</a>
+    <a href="{% url 'add_investment' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'add_investment' %}font-semibold text-stone-950{% endif %}">Add</a>
+    <a href="{% url 'scan' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'scan' %}font-semibold text-stone-950{% endif %}">Scan</a>
+    <a href="{% url 'import_cas' %}" class="text-sm text-stone-700 hover:text-stone-950 {% if request.resolver_match.url_name == 'import_cas' %}font-semibold text-stone-950{% endif %}">Import</a>
+    <form method="post" action="{% url 'logout' %}" class="ml-auto">{% csrf_token %}
+      <button class="text-sm text-stone-500 hover:text-stone-800 focus-visible:outline-2 focus-visible:outline-emerald-600">Log out</button>
+    </form>
+  </div>
+</nav>
+{% endif %}
+<main class="max-w-[1500px] mx-auto px-6 py-8">
+  {% if messages %}
+    {% for message in messages %}
+    <div class="mb-4 rounded-lg px-4 py-2 text-sm {% if message.tags == 'success' %}bg-emerald-50 text-emerald-900{% elif message.tags == 'error' %}bg-red-50 text-red-900{% else %}bg-stone-100 text-stone-800{% endif %}" role="status" aria-live="polite">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+  {% block content %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</main>
+</body>
+</html>

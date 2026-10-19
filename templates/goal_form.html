@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}New goal{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold">
+  {% if kind == "retirement" %}Retirement plan{% elif kind == "recurring" %}New recurring goal{% else %}New one-time goal{% endif %}
+</h1>
+<p class="text-stone-800 text-sm mt-1">
+  Assumptions (<a href="{% url 'goal_settings' %}" class="font-medium text-emerald-800 hover:underline">edit</a>): equity {{ settings.equity_return|floatformat:"-2" }}% post-tax, taxable fixed income {{ settings.taxable_fi_return|floatformat:"-2" }}%, tax-free (PPF/EPF) {{ settings.taxfree_return|floatformat:"-2" }}%{% if kind == "retirement" %}, inflation {{ settings.inflation_working|floatformat:"-2" }}% before / {{ settings.inflation_retired|floatformat:"-2" }}% during retirement, income until age {{ settings.life_expectancy }}{% else %}, goal inflation 10% unless overridden{% endif %}.
+  {% if prefill %}Current investments prefilled from your portfolio (₹{{ prefill.current_equity|floatformat:0 }} equity, ₹{{ prefill.current_taxfree_fi|floatformat:0 }} tax-free, ₹{{ prefill.current_taxable_fi|floatformat:0 }} taxable FI).{% endif %}
+</p>
+
+<form method="post" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 max-w-2xl grid gap-4">
+  {% csrf_token %}
+  <input type="hidden" name="kind" value="{{ kind }}">
+  <label class="grid gap-1 text-sm font-medium text-stone-900">Goal name
+    <input name="name" required class="border border-stone-300 rounded-lg px-3 py-2 text-[15px]" placeholder="{% if kind == 'retirement' %}Financial independence{% elif kind == 'recurring' %}School fees{% else %}Car, wedding, house down-payment…{% endif %}">
+  </label>
+
+  {% if kind == "one_time" %}
+  <div class="grid grid-cols-2 gap-4">
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Cost if spent today (₹)
+      <input name="cost_today" type="number" min="0" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Years from now
+      <input name="years_to_goal" type="number" min="0" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+  </div>
+  <label class="flex items-center gap-2 text-sm text-stone-900"><input type="checkbox" name="flexible" class="w-4 h-4"> Flexible — I can delay it a few years (more equity allowed)</label>
+  {% elif kind == "recurring" %}
+  <div class="grid grid-cols-3 gap-4">
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Annual cost today (₹)
+      <input name="annual_cost" type="number" min="0" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Starts in (years)
+      <input name="years_until_start" type="number" min="0" value="0" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Runs for (years)
+      <input name="years_duration" type="number" min="1" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+  </div>
+  <label class="flex items-center gap-2 text-sm text-stone-900"><input type="checkbox" name="flexible" class="w-4 h-4"> Flexible — timing can shift (more equity allowed)</label>
+  {% else %}
+  <div class="grid grid-cols-2 gap-4">
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Your age now
+      <input name="current_age" type="number" min="18" max="90" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Age you wish to retire (max 60)
+      <input name="retire_age" type="number" min="40" max="60" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+  </div>
+  <div class="grid grid-cols-2 gap-4">
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Monthly expense that persists in retirement (₹)
+      <input name="monthly_expense" type="number" min="0" required class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Annual expenses (insurances etc.) (₹)
+      <input name="annual_expense" type="number" min="0" value="0" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+  </div>
+  <fieldset class="grid gap-3 border-t border-stone-200 pt-4">
+    <legend class="text-sm font-semibold text-stone-900">Income after retirement <span class="font-normal text-stone-800">— optional, monthly in today's ₹; blank = none</span></legend>
+    {% for key, label in income_fields %}
+    <div class="grid grid-cols-2 gap-4">
+      <label class="grid gap-1 text-sm font-medium text-stone-900">{{ label }} (₹/month)
+        <input name="{{ key }}_income" type="number" min="0" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+      <label class="grid gap-1 text-sm font-medium text-stone-900">Grows by % a year
+        <input name="{{ key }}_escalation" type="number" min="0" max="20" step="0.5" value="0" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+      <label class="grid gap-1 text-sm font-medium text-stone-900">Starts in retirement year (blank = 0)
+        <input name="{{ key }}_start" type="number" min="0" max="60" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+      <label class="grid gap-1 text-sm font-medium text-stone-900">Stops in retirement year (blank = never)
+        <input name="{{ key }}_stop" type="number" min="0" max="60" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    </div>
+    {% endfor %}
+    <p class="text-xs text-stone-800">Each stream grows at its rate until retirement and through it, and is subtracted from that year's expense before the corpus is drawn down. Years count from retirement: 0 is the first year. A stream pays from its start year up to, but not including, its stop year — e.g. rent 0–15 for a lease that ends after 15 years, a deferred pension starting at 5. If retirement is far away, the workbook suggests leaving these at zero.</p>
+  </fieldset>
+  <label class="grid gap-1 text-sm font-medium text-stone-900">Pension floor — % of first-year expense bought as an inflation-indexed annuity (0 = off)
+    <input name="pension_floor_pct" type="number" min="0" max="100" step="5" value="0" class="border border-stone-300 rounded-lg px-3 py-2 w-40 tnum"></label>
+  {% endif %}
+
+  <div class="grid grid-cols-2 gap-4">
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Equity investments earmarked (₹)
+      <input name="current_equity" type="number" min="0" value="{{ prefill.current_equity|floatformat:0 }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Tax-free FI — PPF/EPF/NPS (₹)
+      <input name="current_taxfree_fi" type="number" min="0" value="{{ prefill.current_taxfree_fi|floatformat:0 }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Taxable FI — FD/bonds (₹)
+      <input name="current_taxable_fi" type="number" min="0" value="{{ prefill.current_taxable_fi|floatformat:0 }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">Lumpsum expected near goal (₹)
+      <input name="lumpsum_expected" type="number" min="0" value="0" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">{% if kind == "retirement" %}Inflation % for this plan (blank = settings){% else %}Goal inflation % (blank = 10%){% endif %}
+      <input name="inflation_override" type="number" min="0" max="25" step="0.5" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+    <label class="grid gap-1 text-sm font-medium text-stone-900">SIP step-up % per year
+      <input name="step_up_pct" type="number" min="0" max="25" step="0.5" value="5" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+  </div>
+  <label class="grid gap-1 text-sm font-medium text-stone-900">Monthly take-home pay + total EPF/NPS contribution, employer + employee (₹) — optional, to check the SIP is affordable
+    <input name="monthly_take_home" type="number" min="0" class="border border-stone-300 rounded-lg px-3 py-2 w-56 tnum"></label>
+  {% if kind != "retirement" %}
+  <label class="grid gap-1 text-sm font-medium text-stone-900">Years from now you start investing (0 = now)
+    <input name="years_to_start" type="number" min="0" value="0" class="border border-stone-300 rounded-lg px-3 py-2 w-40 tnum"></label>
+  {% endif %}
+
+  <button class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2.5 rounded-lg w-fit focus-visible:outline-2 focus-visible:outline-emerald-950">Compute plan</button>
+</form>
+{% endblock %}
