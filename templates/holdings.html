@@ -65,8 +65,62 @@
   </span>
 </div>
 
-{% for g in groups %}
-<section class="mt-5">
+{% with sections=hreport.sections|default:groups %}
+{# ---------- Summary first: one row per group, subtotal per group, grand total ---------- #}
+{% if pv.holdings %}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm overflow-x-auto mt-4">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-stone-900 border-b border-stone-300 bg-stone-50">
+        <th class="px-4 py-2.5 font-semibold">{% for key, label in group_choices %}{% if key == group %}{{ label }}{% endif %}{% endfor %}</th>
+        <th class="px-4 py-2.5 font-semibold text-right">Holdings</th>
+        <th class="px-4 py-2.5 font-semibold text-right">Invested</th>
+        <th class="px-4 py-2.5 font-semibold text-right">Current</th>
+        <th class="px-4 py-2.5 font-semibold text-right">Gain</th>
+        <th class="px-4 py-2.5 font-semibold text-right">Returns</th>
+        <th class="px-4 py-2.5 font-semibold w-48">Weight</th>
+      </tr>
+    </thead>
+    <tbody class="tnum text-stone-800">
+      {% for g in sections %}
+      <tr class="border-t border-stone-200 hover:bg-stone-50">
+        <td class="px-4 py-2.5 font-medium text-stone-900">
+          <a href="#grp-{{ forloop.counter0 }}" class="hover:underline focus-visible:outline-2 focus-visible:outline-emerald-700 rounded"
+             onclick="var d=document.querySelector('#grp-{{ forloop.counter0 }} details'); if(d) d.open=true;">{{ g.label }}</a>
+          {% if g.starred_count %}<span class="ml-1 text-xs text-amber-800" title="Starred holdings in this group">★ {{ g.starred_count }}</span>{% endif %}
+          {% if g.manual %}<span class="ml-1 text-xs text-amber-800 bg-amber-100 rounded px-1.5 py-0.5">manual</span>{% endif %}
+        </td>
+        <td class="px-4 py-2.5 text-right">{{ g.holdings|length }}</td>
+        <td class="px-4 py-2.5 text-right">₹{{ g.invested|floatformat:0|intcomma }}</td>
+        <td class="px-4 py-2.5 text-right font-medium text-stone-900">₹{{ g.current|floatformat:0|intcomma }}</td>
+        <td class="px-4 py-2.5 text-right {% if g.gain_pct >= 0 %}positive{% else %}negative{% endif %}">{% if g.gain != None and g.gain != "" %}₹{{ g.gain|floatformat:0|intcomma }}{% endif %}</td>
+        <td class="px-4 py-2.5 text-right {% if g.gain_pct >= 0 %}positive{% else %}negative{% endif %}">{{ g.gain_pct|floatformat:1 }}%</td>
+        <td class="px-4 py-2.5">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-2 bg-stone-200 rounded-full overflow-hidden"><div class="h-full bg-emerald-600" style="width: {{ g.weight|floatformat:0 }}%"></div></div>
+            <span class="w-12 text-right font-medium text-stone-900">{{ g.weight|floatformat:1 }}%</span>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot class="tnum">
+      <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+        <td class="px-4 py-2.5">Total</td>
+        <td class="px-4 py-2.5 text-right">{{ pv.holdings|length }}</td>
+        <td class="px-4 py-2.5 text-right">₹{{ pv.total_invested|floatformat:0|intcomma }}</td>
+        <td class="px-4 py-2.5 text-right">₹{{ pv.total_current|floatformat:0|intcomma }}</td>
+        <td class="px-4 py-2.5 text-right {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ pv.total_gain|floatformat:0|intcomma }}</td>
+        <td class="px-4 py-2.5 text-right {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">{{ pv.total_gain_pct|floatformat:1 }}%</td>
+        <td class="px-4 py-2.5 text-right">100%</td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endif %}
+
+{% for g in sections %}
+<section id="grp-{{ forloop.counter0 }}" class="mt-5 scroll-mt-28">
   <details class="group" {% if g.weight >= 5.0 %}open{% endif %}>
     <summary class="flex flex-wrap items-baseline gap-x-4 gap-y-1 cursor-pointer list-none rounded-lg px-3 py-2.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 select-none">
       <span class="font-semibold text-stone-900">{{ g.label }}</span>
@@ -94,6 +148,11 @@
         </thead>
         <tbody>
           {% for h in g.holdings %}
+          {% ifchanged h.priority %}{% if g.starred_count or not forloop.first or h.priority %}
+          <tr class="bg-stone-50 border-t border-stone-200">
+            <td colspan="8" class="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-stone-900">{% if h.priority %}★ Starred{% else %}Other holdings{% endif %}</td>
+          </tr>
+          {% endif %}{% endifchanged %}
           <tr id="holding-{{ h.holding_pk }}" class="border-t border-stone-200">
             <td class="px-4 py-3 w-8">
               <span id="star-{{ h.holding_pk }}">{% include "partials/priority_star.html" with holding_pk=h.holding_pk priority=h.priority %}</span>
@@ -118,11 +177,24 @@
           </tr>
           {% endfor %}
         </tbody>
+        <tfoot class="tnum">
+          <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+            <td class="px-4 py-2.5"></td>
+            <td class="px-4 py-2.5" colspan="3">{{ g.label }} subtotal · {{ g.holdings|length }} holding{{ g.holdings|length|pluralize }}</td>
+            <td class="px-4 py-2.5 text-right">₹{{ g.invested|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2.5 text-right">₹{{ g.current|floatformat:0|intcomma }}</td>
+            <td class="px-4 py-2.5 text-right {% if g.gain_pct >= 0 %}positive{% else %}negative{% endif %}">
+              {% if g.gain != None and g.gain != "" %}₹{{ g.gain|floatformat:0|intcomma }} {% endif %}({{ g.gain_pct|floatformat:1 }}%)
+            </td>
+            <td class="px-4 py-2.5 text-right">{{ g.weight|floatformat:1 }}%</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </details>
 </section>
 {% endfor %}
+{% endwith %}
 
 {% if not pv.holdings %}
 <div class="bg-white rounded-xl border border-stone-300 p-10 text-center">

@@ -33,6 +33,105 @@
 </div>
 {% endif %}
 
+{% if progress %}
+{# ---------- Hero: am I on track? ---------- #}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-8 items-start">
+    <div>
+      {% if progress.on_track %}
+        <span class="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-900 bg-emerald-100 border border-emerald-300 rounded-full px-3 py-1">✓ On track</span>
+      {% else %}
+        <span class="inline-flex items-center gap-1.5 text-sm font-semibold text-red-900 bg-red-50 border border-red-200 rounded-full px-3 py-1">Not on track yet</span>
+      {% endif %}
+      <p class="text-sm text-stone-800 mt-4">{% if progress.on_track %}Surplus{% else %}Shortfall{% endif %} at {{ progress.goal_label }}</p>
+      <p class="text-5xl font-semibold tnum mt-1 {% if progress.on_track %}text-emerald-700{% else %}text-red-800{% endif %}">{% if progress.on_track %}+{% else %}−{% endif %}{{ progress.gap_abs|inr_short }}</p>
+      <p class="text-sm text-stone-900 mt-2 tnum">
+        Projected <span class="font-semibold">{{ progress.projected|inr_short }}</span> against a target of <span class="font-semibold">{{ progress.target|inr_short }}</span>,
+        {% if progress.current_sip %}counting your current SIP of {{ progress.current_sip|inr_short }}/month{% else %}counting only the investments you hold today{% endif %}.
+      </p>
+      <div class="mt-5">
+        <div class="flex justify-between text-xs font-medium text-stone-800 mb-1">
+          <span>Target covered</span><span class="tnum">{{ progress.funded_pct }}% · {{ progress.years_left }} year{{ progress.years_left|pluralize }} left</span>
+        </div>
+        <div class="h-2.5 bg-stone-200 rounded-full overflow-hidden" role="img" aria-label="Projected corpus covers {{ progress.funded_pct }} percent of the target">
+          <div class="h-full {% if progress.on_track %}bg-emerald-600{% else %}bg-red-600{% endif %}" style="width: {{ progress.funded_pct }}%"></div>
+        </div>
+      </div>
+      {% if result.current_path_depletion_age %}
+      <p class="text-sm font-semibold text-red-800 mt-3">⚠ With today's investments alone, money runs out at age {{ result.current_path_depletion_age }}. The SIP closes that gap.</p>
+      {% endif %}
+    </div>
+    <div class="space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-lg border border-stone-300 p-4">
+          <p class="text-xs font-semibold text-stone-800">SIP needed</p>
+          <p class="text-2xl font-semibold tnum text-stone-900 mt-1">{{ progress.required_sip|inr_short }}<span class="text-sm font-medium text-stone-800">/mo</span></p>
+          <p class="text-xs text-stone-800 mt-1">{% if progress.required_sip %}rising {{ result.step_up_pct|floatformat:"-1" }}% a year{% elif progress.on_track %}Your investments already cover it{% else %}No time left for a SIP: see the lumpsum below{% endif %}</p>
+        </div>
+        <div class="rounded-lg border p-4 {% if progress.sip_gap is None %}border-stone-300{% elif progress.sip_gap >= 0 %}border-emerald-300 bg-emerald-50{% else %}border-red-200 bg-red-50{% endif %}">
+          <p class="text-xs font-semibold text-stone-800">Your current SIP</p>
+          {% if progress.current_sip %}
+          <p class="text-2xl font-semibold tnum text-stone-900 mt-1">{{ progress.current_sip|inr_short }}<span class="text-sm font-medium text-stone-800">/mo</span></p>
+          <p class="text-xs font-semibold mt-1 tnum {% if progress.sip_gap >= 0 %}text-emerald-800{% else %}text-red-800{% endif %}">{% if progress.sip_gap >= 0 %}{{ progress.sip_gap|inr_short }}/mo to spare{% else %}{{ progress.sip_gap|inr_short }}/mo more needed{% endif %}</p>
+          {% else %}
+          <p class="text-2xl font-semibold tnum text-stone-900 mt-1">₹0</p>
+          <p class="text-xs text-stone-800 mt-1">No purchases in the last 6 months</p>
+          {% endif %}
+        </div>
+      </div>
+      {% if progress.required_sip or progress.lumpsum_now %}
+      <p class="text-sm text-stone-900 tnum">Or invest <span class="font-semibold">{{ progress.lumpsum_now|inr_short }}</span> once, today, instead of the SIP.</p>
+      {% endif %}
+      {% if affordability %}
+      <p class="text-sm text-stone-800 tnum">The SIP needed is <span class="font-semibold text-stone-900">{{ affordability.pct }}%</span> of your monthly take-home: {{ affordability.note }}.</p>
+      {% endif %}
+      {% if progress.current_sip %}
+      <p class="text-xs text-stone-800">Current SIP is your average monthly buying across all tracked accounts over the last 6 months, so it may also be funding other goals.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ---------- Projection chart + assumptions ---------- #}
+<div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6 mt-6">
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-stone-900 mb-1">Projected growth vs target</h2>
+    <p class="text-xs text-stone-800 mb-3">Year-end value of the money earmarked for this goal. The green line pays the SIP needed and meets the target on time.</p>
+    <div style="height:260px;position:relative"><canvas id="goalchart" role="img" aria-label="Line chart of projected corpus each year against the goal target"></canvas></div>
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6">
+    <div class="flex items-baseline justify-between gap-3 mb-3">
+      <h2 class="text-sm font-semibold text-stone-900">Assumptions</h2>
+      <a href="{% url 'goal_settings' %}" class="text-sm font-medium text-emerald-800 hover:underline">Edit</a>
+    </div>
+    <dl class="text-sm tnum space-y-1.5">
+      {% for label, value in progress.assumptions %}
+      <div class="flex justify-between gap-4 border-t border-stone-200 pt-1.5 first:border-0">
+        <dt class="text-stone-800">{{ label }}</dt>
+        <dd class="font-semibold text-stone-900 text-right">{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    <ul class="mt-4 space-y-2">
+      {% for n in progress.notes %}
+      <li class="text-xs rounded-lg px-3 py-2 {% if n.tone == 'warn' %}bg-amber-50 border border-amber-300 text-amber-900{% else %}bg-stone-100 text-stone-900{% endif %}">{{ n.text }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+
+<details class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <summary class="text-sm font-semibold text-emerald-800 cursor-pointer hover:underline select-none">How the target is built</summary>
+  <dl class="text-sm tnum space-y-1.5 mt-3 max-w-2xl">
+    {% for label, value in rows %}
+    <div class="flex justify-between gap-4 border-t border-stone-200 pt-1.5 first:border-0">
+      <dt class="text-stone-800">{{ label }}</dt>
+      <dd class="font-semibold text-stone-900 text-right">{{ value }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</details>
+{% else %}
 {# ---------- Hero: the answer first ---------- #}
 <div class="rounded-xl border p-6 mt-6 {% if result.on_track %}bg-emerald-50 border-emerald-300{% else %}bg-white border-stone-300 shadow-sm{% endif %}">
   <div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-8 items-start">
@@ -43,7 +142,7 @@
       {% else %}
         <span class="inline-flex items-center gap-1.5 text-sm font-semibold {% if result.depletion_age %}text-amber-900 bg-amber-100 border border-amber-300{% else %}text-stone-900 bg-stone-100 border border-stone-300{% endif %} rounded-full px-3 py-1">Monthly SIP needed</span>
         <p class="text-5xl font-semibold tnum text-stone-900 mt-3">{{ result.monthly_sip|inr_short }}<span class="text-lg font-medium text-stone-800"> /month</span></p>
-        <p class="text-sm text-stone-800 mt-1">stepping up {{ result.step_up_pct }}% every year · or {{ result.lumpsum_now|inr_short }} as a lumpsum today plus the balance as SIP</p>
+        <p class="text-sm text-stone-800 mt-1">stepping up {{ result.step_up_pct }}% every year{% if result.lumpsum_now %} · or {{ result.lumpsum_now|inr_short }} invested once today instead of the SIP{% endif %}</p>
         {% if affordability %}
         <p class="text-sm text-stone-800 mt-1 tnum">That's <span class="font-semibold text-stone-900">{{ affordability.pct }}%</span> of your monthly take-home — {{ affordability.note }}.</p>
         {% endif %}
@@ -89,6 +188,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 {% if has_snap_history %}
 <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
@@ -101,7 +201,7 @@
 {% if scenarios %}
 <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
   <h2 class="text-sm font-semibold text-stone-900 mb-1">Scenarios — what if markets don't cooperate?</h2>
-  <p class="text-xs text-stone-800 mb-4">Bear: equity 7%, inflation 7%. Bull: equity 12%, inflation 5%. Step-up raises the SIP 10% a year — a bigger early SIP that shrinks later. Retire-late pushes retirement 3 years out, giving compounding more time.</p>
+  <p class="text-xs text-stone-800 mb-4">Bear: equity 7%, inflation 7%. Bull: equity 12%, inflation 5%. Step-up raises the SIP 10% a year — a bigger early SIP that shrinks later. Retire-late pushes retirement 3 years out, giving compounding more time. De-risk keeps the goal money in fixed income for the last 3 years, so a crash just before the goal can't hurt it.</p>
   <div class="space-y-2.5">
     {% for s in scenarios %}
     <div class="flex items-center gap-3">
@@ -229,6 +329,25 @@ new Chart(document.getElementById('snapchart'), {
     scales: { x: { ticks: { color: '#44403c', maxTicksLimit: 8 } },
               y: { ticks: { color: '#44403c', callback: money } } } }
 });
+{% endif %}
+{% if progress %}
+(() => {
+  const c = {{ progress.chart|safe }};
+  const sets = [
+    { label: 'With the SIP needed', data: c.required, borderColor: '#047857', backgroundColor: 'rgba(4,120,87,.08)', fill: true, tension: .25, pointRadius: 0, borderWidth: 2 },
+    { label: c.has_current_sip ? 'With your current SIP' : "Today's investments only", data: c.current, borderColor: '#b45309', borderDash: [5, 4], fill: false, tension: .25, pointRadius: 0, borderWidth: 2 },
+    { label: 'Target', data: c.labels.map(() => c.target), borderColor: '#1c1917', borderDash: [2, 3], fill: false, pointRadius: 0, borderWidth: 1.5 }
+  ];
+  new Chart(document.getElementById('goalchart'), {
+    type: 'line',
+    data: { labels: c.labels, datasets: sets },
+    options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { color: '#1c1917', boxWidth: 12 } },
+        tooltip: { callbacks: { label: item => item.dataset.label + ': ' + money(item.parsed.y) } } },
+      scales: { x: { ticks: { color: '#44403c', maxTicksLimit: 10 } },
+                y: { beginAtZero: true, ticks: { color: '#44403c', callback: money } } } }
+  });
+})();
 {% endif %}
 {% if result.cash_flow %}
 (() => {

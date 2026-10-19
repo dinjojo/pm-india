@@ -427,10 +427,11 @@ SCORE_COLS = ["ro", "up", "dc"]
 
 
 def query(category: str | None, benchmark: str | None, window: str,
-          outperf_min: float, upside_min: float, downside_min: float,
-          mode: str | None) -> pd.DataFrame:
+          outperf_min: float | None, upside_min: float | None,
+          downside_min: float | None, mode: str | None) -> pd.DataFrame:
     """Filtered screener rows; mode='excess' applies the workbook's fourth
-    screen (excess return > 0 and excess risk < 0)."""
+    screen (excess return > 0 and excess risk < 0). Any minimum of None means
+    "no threshold on this ratio"."""
     if window not in WINDOWS.values():
         raise ValueError(f"window must be one of {list(WINDOWS.values())}")
     con = nav_history._connect()
@@ -446,12 +447,10 @@ def query(category: str | None, benchmark: str | None, window: str,
         where.append(f"ex{window} > 0")
         where.append(f"exr{window} < 0")
     else:
-        where.append(f"ro{window} >= ?")
-        params.append(outperf_min)
-        where.append(f"up{window} >= ?")
-        params.append(upside_min)
-        where.append(f"dc{window} >= ?")
-        params.append(downside_min)
+        for col, lo in (("ro", outperf_min), ("up", upside_min), ("dc", downside_min)):
+            if lo is not None:
+                where.append(f"{col}{window} >= ?")
+                params.append(lo)
     sql = (
         "SELECT * FROM read_parquet(?) WHERE " + " AND ".join(where) +
         f" ORDER BY ro{window} DESC LIMIT 200"

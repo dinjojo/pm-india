@@ -2,52 +2,261 @@
 {% load humanize %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1 class="text-sm font-semibold uppercase tracking-wide text-stone-700">Net worth</h1>
-<p class="text-4xl font-semibold mt-1 tnum text-stone-900">₹{{ pv.total_current|intcomma }}</p>
-<p class="mt-1 text-lg tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">
-  {% if pv.total_gain >= 0 %}▲{% else %}▼{% endif %} ₹{{ pv.total_gain|floatformat:0|intcomma }}
-  {% if pv.total_invested %}({{ pv.total_gain_pct|floatformat:2 }}% of ₹{{ pv.total_invested|intcomma }} invested){% endif %}
-</p>
-{% if pv.xirr %}<p class="text-stone-800 mt-1 tnum">XIRR {{ pv.xirr|floatformat:2 }}%</p>{% endif %}
-<p class="mt-3 text-stone-800">{{ pv.narrative }}</p>
-
-<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
-  <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-    <h2 class="text-sm font-semibold text-stone-900">Performance</h2>
-    {% if has_history %}
-    <div class="flex gap-1" role="tablist" aria-label="Chart period">
-      <button data-period="3D"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">3D</button>
-      <button data-period="1W"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">1W</button>
-      <button data-period="1M"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">1M</button>
-      <button data-period="3M"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">3M</button>
-      <button data-period="6M"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">6M</button>
-      <button data-period="1Y"  class="period-chip is-active px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-800 bg-emerald-800 text-white">1Y</button>
-      <button data-period="All" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">All</button>
-    </div>
-    {% endif %}
+{# Decision-framed dashboard: (1) what is it worth, (2) how did it move, (3) what needs attention, (4) where next. #}
+<div class="flex flex-wrap items-baseline justify-between gap-3 mb-4">
+  <h1 class="text-2xl font-semibold text-stone-900">Your portfolio</h1>
+  <div class="flex gap-2">
+    <a href="{% url 'add_investment' %}" class="bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-950">Add investment</a>
+    <a href="{% url 'import_cas' %}" class="border border-stone-300 hover:bg-stone-100 text-stone-800 text-sm font-medium px-4 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-emerald-900">Import statement</a>
   </div>
-  {% if has_history %}
-  <div style="height:190px;position:relative"><canvas id="trend" role="img" aria-label="Compact area chart of portfolio value with period selector"></canvas></div>
-  <p class="text-xs text-stone-700 mt-2">
-    <span id="trend-note">Last 12 months.</span> Points before the first daily snapshot are reconstructed from historical NAVs — early points are estimates.
-  </p>
-  {% else %}
-  <p class="text-stone-700 text-sm">Save an investment or import a statement — the trend appears once history exists.</p>
-  {% endif %}
 </div>
 
-<div class="grid xl:grid-cols-3 gap-6 mt-6 items-start">
+{# (1) KPI row #}
+<section aria-label="Portfolio summary" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 min-w-0">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Invested</h2>
+    <p class="text-2xl font-semibold mt-1 tnum text-stone-900">₹{{ pv.total_invested|floatformat:0|intcomma }}</p>
+    <p class="text-xs text-stone-800 mt-1">Net money put in (buys − sells)</p>
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 min-w-0">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Current value</h2>
+    <p class="text-2xl font-semibold mt-1 tnum text-stone-900">₹{{ pv.total_current|floatformat:0|intcomma }}</p>
+    <p class="text-xs text-stone-800 mt-1 tnum">{{ pv.holdings|length }} holding{{ pv.holdings|length|pluralize }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 min-w-0">
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Overall gain</h2>
+    {% if dash %}
+    <p class="text-2xl font-semibold mt-1 tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">
+      {% if pv.total_gain >= 0 %}+{% else %}−{% endif %}₹{{ dash.gain_abs|floatformat:0|intcomma }}
+    </p>
+    <p class="text-xs mt-1 tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">
+      {% if pv.total_gain >= 0 %}▲{% else %}▼{% endif %} {{ dash.gain_pct_abs|floatformat:2 }}% on invested
+    </p>
+    {% else %}
+    <p class="text-2xl font-semibold mt-1 tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ pv.total_gain|floatformat:0|intcomma }}</p>
+    <p class="text-xs mt-1 tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">{{ pv.total_gain_pct|floatformat:2 }}% on invested</p>
+    {% endif %}
+  </div>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 min-w-0">
+    {% if dash.xirr_pct is not None %}
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-stone-800"><abbr title="Extended internal rate of return — annualised, accounts for when each rupee went in">XIRR</abbr></h2>
+    <p class="text-2xl font-semibold mt-1 tnum {% if dash.xirr_pct >= 0 %}positive{% else %}negative{% endif %}">{{ dash.xirr_pct|floatformat:2 }}%</p>
+    <p class="text-xs text-stone-800 mt-1">Annualised, from every buy and sell</p>
+    {% else %}
+    <h2 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Simple return</h2>
+    <p class="text-2xl font-semibold mt-1 tnum {% if pv.total_gain >= 0 %}positive{% else %}negative{% endif %}">{{ pv.total_gain_pct|floatformat:2 }}%</p>
+    <p class="text-xs text-stone-800 mt-1">Gain ÷ invested, not annualised</p>
+    {% endif %}
+  </div>
+</section>
+
+{# Smart narrative #}
+<p class="mt-4 text-stone-800">{% if dash %}{{ dash.narrative }}{% else %}{{ pv.narrative }}{% endif %}</p>
+
+<div class="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6 mt-6 items-start">
+  {# (2) Trend #}
+  <section class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0" aria-labelledby="trend-h">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+      <div class="min-w-0">
+        <h2 id="trend-h" class="text-sm font-semibold text-stone-900">How it moved</h2>
+        {% if dash.movement %}{% with m=dash.movement %}
+        {% if not m.change and not m.flows %}
+        <p class="text-sm mt-1 tnum text-stone-800">Unchanged over the last {{ m.days }} day{{ m.days|pluralize }} of daily snapshots.</p>
+        {% else %}
+        <p class="text-sm mt-1 tnum text-stone-800">
+          Last {{ m.days }} day{{ m.days|pluralize }}:
+          <span class="font-semibold {% if m.change >= 0 %}positive{% else %}negative{% endif %}">{% if m.change >= 0 %}+{% else %}−{% endif %}₹{{ m.change_abs|floatformat:0|intcomma }}{% if m.change_pct is not None %} ({{ m.change_pct|floatformat:1 }}%){% endif %}</span>
+          — <span class="{% if m.market >= 0 %}positive{% else %}negative{% endif %}">{% if m.market >= 0 %}+{% else %}−{% endif %}₹{{ m.market_abs|floatformat:0|intcomma }} market</span>,
+          {% if m.flows >= 0 %}+{% else %}−{% endif %}₹{{ m.flows_abs|floatformat:0|intcomma }} {% if m.flows >= 0 %}new money{% else %}withdrawn{% endif %}
+        </p>
+        {% endif %}
+        {% endwith %}{% endif %}
+      </div>
+      {% if has_history %}
+      <div class="flex gap-1" role="group" aria-label="Chart period">
+        <button type="button" data-period="3D"  aria-pressed="false" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">3D</button>
+        <button type="button" data-period="1W"  aria-pressed="false" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">1W</button>
+        <button type="button" data-period="1M"  aria-pressed="false" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">1M</button>
+        <button type="button" data-period="3M"  aria-pressed="false" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">3M</button>
+        <button type="button" data-period="6M"  aria-pressed="false" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">6M</button>
+        <button type="button" data-period="1Y"  aria-pressed="true"  class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-800 bg-emerald-800 text-white">1Y</button>
+        <button type="button" data-period="All" aria-pressed="false" class="period-chip px-2.5 py-1 rounded-full text-xs font-semibold border border-stone-300 text-stone-800 hover:bg-stone-100">All</button>
+      </div>
+      {% endif %}
+    </div>
+    {% if has_history %}
+    <div style="height:220px;position:relative"><canvas id="trend" role="img" aria-label="Area chart of portfolio value against money invested, with period selector"></canvas></div>
+    <p class="text-xs text-stone-800 mt-2">
+      <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-600" aria-hidden="true"></span>Value</span>
+      <span class="inline-flex items-center gap-1 ml-2"><span class="w-2.5 h-2.5 rounded-full bg-stone-400" aria-hidden="true"></span>Invested</span>
+      · <span id="trend-note">Last 12 months.</span>
+      Points before the first daily snapshot are reconstructed (historical NAVs for funds, cost for everything else) — estimates; the movement figure above uses daily snapshots only.
+    </p>
+    {% else %}
+    <p class="text-stone-800 text-sm">Save an investment or import a statement — the trend appears once at least two days of history exist.</p>
+    {% endif %}
+  </section>
+
+  {# (3) Attention #}
+  <section class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0" aria-labelledby="attn-h">
+    <div class="flex items-center justify-between gap-2 mb-3">
+      <h2 id="attn-h" class="text-sm font-semibold text-stone-900">Needs attention</h2>
+      {% if dash %}
+        {% if dash.attention_count %}
+        <span class="text-xs font-semibold tnum text-amber-900 bg-amber-100 rounded-full px-2.5 py-0.5">{{ dash.attention_count }} item{{ dash.attention_count|pluralize }}</span>
+        {% else %}
+        <span class="text-xs font-semibold text-emerald-900 bg-emerald-100 rounded-full px-2.5 py-0.5">All clear</span>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% if dash %}
+    <div class="divide-y divide-stone-200">
+      {# Goals: off-track first, then nearest deadline #}
+      <div class="py-3">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Goals</h3>
+          <a href="{% url 'goals' %}" class="text-xs font-medium text-emerald-800 hover:underline">All goals{% if dash.goals_total %} ({{ dash.goals_total }}){% endif %}</a>
+        </div>
+        {% if dash.goals %}
+        <ul class="mt-2 space-y-1.5">
+          {% for g in dash.goals %}
+          <li>
+            <a href="{% url 'goal_detail' g.pk %}" class="flex items-center justify-between gap-2 rounded-lg py-1.5 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
+              <span class="min-w-0">
+                <span class="block truncate text-sm font-medium text-stone-900">{{ g.name }}</span>
+                <span class="block text-xs text-stone-800 tnum">
+                  {% if g.years_away is not None %}{% if g.years_away == 0 %}Due now{% else %}In {{ g.years_away }} year{{ g.years_away|pluralize }}{% endif %}{% else %}{{ g.kind_label }}{% endif %}{% if g.monthly_sip %} · SIP ₹{{ g.monthly_sip|floatformat:0|intcomma }}/mo needed{% endif %}{% if g.affordability %} ({{ g.affordability.pct }}% of take-home){% endif %}
+                </span>
+              </span>
+              {% if g.status == "off_track" %}
+              <span class="shrink-0 text-xs font-semibold text-red-800 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">Off track</span>
+              {% elif g.status == "stretch" %}
+              <span class="shrink-0 text-xs font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Stretch</span>
+              {% elif g.status == "funded" %}
+              <span class="shrink-0 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">Funded</span>
+              {% else %}
+              <span class="shrink-0 text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">On track</span>
+              {% endif %}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-stone-800 mt-2">No goals yet. <a href="{% url 'goal_create' %}?kind=retirement&prefill=portfolio" class="font-medium text-emerald-800 hover:underline">Start with a retirement plan</a>.</p>
+        {% endif %}
+      </div>
+
+      {# Tax: equity lots in profit turning long-term soon #}
+      {% if dash.tax_events %}
+      <div class="py-3">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Turning long-term soon</h3>
+          <a href="{% url 'tax' %}" class="text-xs font-medium text-emerald-800 hover:underline">Tax page</a>
+        </div>
+        <p class="text-xs text-stone-800 mt-1">Selling before these dates is taxed as STCG (20%) instead of LTCG (12.5%).</p>
+        <ul class="mt-2 space-y-1.5 text-sm tnum">
+          {% for t in dash.tax_events|slice:":4" %}
+          <li class="flex items-baseline justify-between gap-2">
+            <span class="min-w-0 truncate text-stone-900">{{ t.name }}</span>
+            <span class="shrink-0 text-stone-800">{{ t.long_term_on|date:"j M" }} · {% if t.days == 0 %}today{% else %}{{ t.days }}d{% endif %} · <span class="positive">+₹{{ t.gain|floatformat:0|intcomma }}</span></span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% if dash.tax_events|length > 4 %}<p class="text-xs text-stone-800 mt-1 tnum">+{{ dash.tax_events|length|add:"-4" }} more on the tax page</p>{% endif %}
+      </div>
+      {% endif %}
+
+      {# Values that are missing or out of date #}
+      {% if dash.missing or dash.stale %}
+      <div class="py-3">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-800">Values to check</h3>
+          <a href="{% url 'holdings' %}" class="text-xs font-medium text-emerald-800 hover:underline">Update on Holdings</a>
+        </div>
+        {% if dash.missing %}
+        <p class="text-sm text-stone-900 mt-2 tnum">
+          <span class="font-semibold text-amber-800">{{ dash.missing|length }}</span> holding{{ dash.missing|length|pluralize }} without a price or entered value — shown at cost, so gains here are understated or overstated.
+        </p>
+        <p class="text-xs text-stone-800 mt-1 truncate">{% for h in dash.missing|slice:":3" %}{{ h.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if dash.missing|length > 3 %} and {{ dash.missing|length|add:"-3" }} more{% endif %}</p>
+        {% endif %}
+        {% if dash.stale %}
+        <p class="text-sm text-stone-900 mt-2 tnum">
+          <span class="font-semibold text-amber-800">{{ dash.stale|length }}</span> price{{ dash.stale|length|pluralize }} older than a week (oldest {{ dash.stale.0.as_of|date:"j M" }}).
+        </p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# Starred holdings #}
+      {% if dash.priority %}
+      <div class="py-3">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-800"><span class="text-amber-600" aria-hidden="true">★</span> Starred holdings</h3>
+          <a href="{% url 'holdings' %}" class="text-xs font-medium text-emerald-800 hover:underline">Holdings</a>
+        </div>
+        <table class="w-full text-sm tnum mt-2">
+          <caption class="sr-only">Starred holdings with current value and return</caption>
+          <tbody>
+          {% for h in dash.priority|slice:":5" %}
+            <tr class="border-t border-stone-200 first:border-0">
+              <td class="py-1.5 pr-2 truncate max-w-52 text-stone-900">{{ h.name }}{% if h.manual_value %} <span class="text-xs text-amber-800 bg-amber-100 rounded px-1.5 py-0.5" title="Value entered manually or shown at cost — no price feed">manual</span>{% endif %}</td>
+              <td class="py-1.5 text-right text-stone-900">₹{{ h.current|floatformat:0|intcomma }}</td>
+              <td class="py-1.5 text-right {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">{{ h.gain_pct|floatformat:1 }}%</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    {# View not yet passing `dash`: show what PortfolioView alone can tell. #}
+    <ul class="space-y-1.5 text-sm tnum">
+      {% for h in pv.holdings %}{% if h.priority %}
+      <li class="flex justify-between gap-2"><span class="truncate text-stone-900"><span class="text-amber-600" aria-hidden="true">★</span> {{ h.name }}</span><span class="{% if h.gain >= 0 %}positive{% else %}negative{% endif %}">{{ h.gain_pct|floatformat:1 }}%</span></li>
+      {% endif %}{% empty %}
+      <li class="text-stone-800">No holdings yet.</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+
+{# (4) Where next #}
+<nav aria-label="Go to" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+  <a href="{% url 'screener' %}" class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
+    <span class="block font-semibold text-stone-900">Screener →</span>
+    <span class="block text-sm text-stone-800 mt-1">Filter stocks and funds by the numbers</span>
+  </a>
+  <a href="{% url 'funds' %}" class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
+    <span class="block font-semibold text-stone-900">Funds →</span>
+    <span class="block text-sm text-stone-800 mt-1">Search schemes, NAV history and analytics</span>
+  </a>
+  <a href="{% url 'goals' %}" class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
+    <span class="block font-semibold text-stone-900">Goals →</span>
+    <span class="block text-sm text-stone-800 mt-1">Retirement and life goals, SIP needed for each</span>
+  </a>
+  <a href="{% url 'tax' %}" class="bg-white rounded-xl border border-stone-300 shadow-sm p-5 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-emerald-700">
+    <span class="block font-semibold text-stone-900">Tax →</span>
+    <span class="block text-sm text-stone-800 mt-1">Capital gains by FY, harvesting headroom</span>
+  </a>
+</nav>
+
+{# Detail: where the money sits #}
+<h2 class="text-sm font-semibold text-stone-900 mt-8 mb-3">Where your money sits</h2>
+<div class="grid xl:grid-cols-3 gap-6 items-start">
   <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 xl:col-span-2 overflow-x-auto min-w-0">
-    <h2 class="text-sm font-semibold text-stone-900 mb-3">Diversification by asset class</h2>
+    <h3 class="text-sm font-semibold text-stone-900 mb-3">By asset class</h3>
     {% if pv.class_breakdown %}
     <table class="w-full text-sm tnum">
       <thead>
         <tr class="text-left text-stone-800 border-b border-stone-300">
-          <th class="py-2 font-semibold">Asset class</th>
-          <th class="py-2 font-semibold text-right">Invested</th>
-          <th class="py-2 font-semibold text-right">Current</th>
-          <th class="py-2 font-semibold text-right">Return</th>
-          <th class="py-2 font-semibold text-right">Weight</th>
+          <th scope="col" class="py-2 font-semibold">Asset class</th>
+          <th scope="col" class="py-2 font-semibold text-right">Invested</th>
+          <th scope="col" class="py-2 font-semibold text-right">Current</th>
+          <th scope="col" class="py-2 font-semibold text-right">Return</th>
+          <th scope="col" class="py-2 font-semibold text-right">Weight</th>
         </tr>
       </thead>
       <tbody>
@@ -62,31 +271,36 @@
         {% endfor %}
       </tbody>
     </table>
-    {% else %}<p class="text-stone-700 text-sm">No holdings yet.</p>{% endif %}
+    {% else %}<p class="text-stone-800 text-sm">No holdings yet.</p>{% endif %}
   </div>
 
   <div class="xl:col-span-1 min-w-0 flex flex-col gap-6">
     <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
-      <h2 class="text-sm font-semibold text-stone-900 mb-3">Where your money sits</h2>
+      <h3 class="text-sm font-semibold text-stone-900 mb-3">Allocation</h3>
       {% if pv.allocation %}<div style="height:220px;position:relative"><canvas id="alloc" role="img" aria-label="Doughnut chart of allocation by asset class"></canvas></div>{% else %}
-        <p class="text-stone-700 text-sm">Add an investment to see your allocation.</p>{% endif %}
+        <p class="text-stone-800 text-sm">Add an investment to see your allocation.</p>{% endif %}
     </div>
 
     <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 min-w-0">
-      <h2 class="text-sm font-semibold text-stone-900 mb-3">Top positions</h2>
+      <div class="flex items-baseline justify-between gap-2 mb-3">
+        <h3 class="text-sm font-semibold text-stone-900">Top positions</h3>
+        <a href="{% url 'holdings' %}" class="text-xs font-medium text-emerald-800 hover:underline">All holdings</a>
+      </div>
       {% if pv.holdings %}
-    <table class="w-full text-sm">
-      <tbody class="tnum">
-      {% for h in pv.holdings|slice:":8" %}
-        <tr class="border-t border-stone-200">
-          <td class="py-2 pr-2 truncate max-w-52 font-medium text-stone-900">{% if h.priority %}<span class="text-amber-600" title="Priority">★</span> {% endif %}{{ h.name }}</td>
-          <td class="py-2 text-right text-stone-900">₹{{ h.current|floatformat:0|intcomma }}</td>
-          <td class="py-2 text-right {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">{{ h.gain_pct|floatformat:1 }}%</td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}<p class="text-stone-700 text-sm">No holdings yet.</p>{% endif %}
+      <table class="w-full text-sm">
+        <caption class="sr-only">Largest holdings with current value and return</caption>
+        <tbody class="tnum">
+        {% for h in pv.holdings|slice:":8" %}
+          <tr class="border-t border-stone-200">
+            <td class="py-2 pr-2 truncate max-w-52 font-medium text-stone-900">{% if h.priority %}<span class="text-amber-600" title="Starred">★</span> {% endif %}{{ h.name }}</td>
+            <td class="py-2 text-right text-stone-900">₹{{ h.current|floatformat:0|intcomma }}</td>
+            <td class="py-2 text-right {% if h.gain >= 0 %}positive{% else %}negative{% endif %}">{{ h.gain_pct|floatformat:1 }}%</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}<p class="text-stone-800 text-sm">No holdings yet.</p>{% endif %}
+    </div>
   </div>
 </div>
 
@@ -97,7 +311,7 @@ const ctx = document.getElementById('trend');
 const DAYS = {'3D': 3, '1W': 7, '1M': 31, '3M': 92, '6M': 183, '1Y': 366, 'All': 1e9};
 const NOTE = {'3D': 'Last 3 days.', '1W': 'Last week.', '1M': 'Last month.', '3M': 'Last 3 months.', '6M': 'Last 6 months.', '1Y': 'Last 12 months.', 'All': 'Full history.'};
 const fmt = v => '₹' + (v >= 10000000 ? (v/10000000).toFixed(2) + ' Cr' : v >= 100000 ? (v/100000).toFixed(1) + 'L' : v >= 1000 ? (v/1000).toFixed(0) + 'k' : v);
-const grad = c => { const g = c.createLinearGradient(0, 0, 0, 190);
+const grad = c => { const g = c.createLinearGradient(0, 0, 0, 220);
   g.addColorStop(0, 'rgba(5,150,105,0.18)'); g.addColorStop(1, 'rgba(5,150,105,0)'); return g; };
 let chart;
 function render(period) {
@@ -114,7 +328,7 @@ function render(period) {
       { label: 'Value', data: cur, borderColor: '#059669', borderWidth: 2,
         backgroundColor: grad(ctx.getContext('2d')), fill: true, tension: 0.3,
         pointRadius: sparse ? 3 : 0, pointHoverRadius: 4 },
-      { label: 'Invested', data: inv, borderColor: '#94a3b8', borderWidth: 1, borderDash: [4,4],
+      { label: 'Invested', data: inv, borderColor: '#a8a29e', borderWidth: 1, borderDash: [4,4],
         fill: false, tension: 0.3, pointRadius: sparse ? 2 : 0, pointHoverRadius: 0 },
     ]
   };
@@ -122,9 +336,9 @@ function render(period) {
     animation: false, maintainAspectRatio: false, normalized: true,
     interaction: { mode: 'index', intersect: false },
     scales: {
-      x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#44403c' } },
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 10 }, color: '#292524' } },
       y: { border: { display: false }, grid: { color: '#f5f5f4' },
-           position: 'right', ticks: { maxTicksLimit: 4, font: { size: 10 }, color: '#44403c', callback: fmt } }
+           position: 'right', ticks: { maxTicksLimit: 4, font: { size: 10 }, color: '#292524', callback: fmt } }
     },
     plugins: {
       legend: { display: false },
@@ -138,11 +352,13 @@ function render(period) {
 }
 document.querySelectorAll('.period-chip').forEach(btn => btn.addEventListener('click', () => {
   document.querySelectorAll('.period-chip').forEach(b => {
-    b.classList.remove('is-active', 'border-emerald-800', 'bg-emerald-800', 'text-white');
+    b.classList.remove('border-emerald-800', 'bg-emerald-800', 'text-white');
     b.classList.add('border-stone-300', 'text-stone-800');
+    b.setAttribute('aria-pressed', 'false');
   });
-  btn.classList.add('is-active', 'border-emerald-800', 'bg-emerald-800', 'text-white');
+  btn.classList.add('border-emerald-800', 'bg-emerald-800', 'text-white');
   btn.classList.remove('border-stone-300', 'text-stone-800');
+  btn.setAttribute('aria-pressed', 'true');
   render(btn.dataset.period);
 }));
 render('1Y');
@@ -150,15 +366,16 @@ render('1Y');
 {% endif %}
 {% if pv.allocation %}
 <script>
+// No red in the palette: red is reserved for losses across the app.
 new Chart(document.getElementById('alloc'), {
   type: 'doughnut',
   data: {
     labels: {{ alloc_labels|safe }},
     datasets: [{ data: {{ alloc_values|safe }},
-      backgroundColor: ['#059669','#0ea5e9','#f59e0b','#8b5cf6','#ef4444','#64748b','#14b8a6','#f97316'] }]
+      backgroundColor: ['#059669','#0ea5e9','#f59e0b','#8b5cf6','#6366f1','#64748b','#14b8a6','#a16207'] }]
   },
   options: { animation: false, maintainAspectRatio: false,
-    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } }
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 }, color: '#292524' } } } }
 });
 </script>
 {% endif %}

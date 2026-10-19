@@ -17,7 +17,10 @@ from core.portfolio import portfolio_view, refresh_holdings
 from dataclasses import replace
 
 from core.goals import (one_time_goal, recurring_goal, retirement_plan, goal_scenarios,
-                        sip_affordability, young_earner_advice)
+                        sip_affordability, young_earner_advice, goal_progress,
+                        recent_monthly_investing)
+from core.report_grouping import holdings_report, tax_report
+from core.dashboard_context import build_dashboard_context
 from core.snapshots import backfill_snapshots, record_snapshot
 from core.tax.gains import (
     FYTaxSummary,
@@ -60,6 +63,7 @@ def dashboard(request):
         "has_history": len(trend["dates"]) >= 2,
         "alloc_labels": json.dumps(list(view.allocation.keys())),
         "alloc_values": json.dumps(list(view.allocation.values())),
+        **build_dashboard_context(request.user, view, snaps),
     })
 
 
@@ -86,7 +90,7 @@ def holdings(request):
                           "color": "bg-stone-400"})
     return render(request, "holdings.html",
                   {"pv": view, "groups": groups, "group": group, "group_choices": choices,
-                   "alloc_bar": alloc_bar})
+                   "alloc_bar": alloc_bar, "hreport": holdings_report(view, groups)})
 
 
 @login_required
@@ -155,6 +159,7 @@ def tax(request):
         "deductions_used": deductions_used,
         "deductions_left": deductions_left,
         "deduction_pct": deduction_pct,
+        "treport": tax_report(summaries, summary, unrealized, hide_zero),
     })
 
 
@@ -302,6 +307,11 @@ def goal_detail(request, pk):
     }
     ctx.update(snap_trend=json.dumps(snap_trend),
                has_snap_history=len(snap_trend["dates"]) >= 2)
+    buys = Transaction.objects.filter(account__user=request.user, kind="buy") \
+        .values_list("date", "amount")
+    ctx["progress"] = goal_progress(
+        plan, r, ctx.get("assumptions"),
+        current_sip=recent_monthly_investing(buys))
     return render(request, "goal_detail.html", {"plan": plan, **ctx})
 
 

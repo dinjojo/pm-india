@@ -101,6 +101,24 @@ class SchemeBenchmarksTests(SimpleTestCase):
         self.assertEqual(list(got), ["nifty500_tri"])
 
 
+class ScreenerQueryTests(SimpleTestCase):
+    def test_none_thresholds_skip_predicates(self):
+        from unittest import mock
+        con_mock = mock.MagicMock()
+        con_mock.execute.return_value.fetchdf.return_value = pd.DataFrame()
+        with mock.patch.object(nav_history, "_connect", return_value=con_mock):
+            sc.query(None, None, "3Y", 0.6, None, None, None)
+        sql = con_mock.execute.call_args[0][0]
+        self.assertIn("ro3Y >= ?", sql)
+        self.assertNotIn("up3Y", sql)
+        self.assertNotIn("dc3Y", sql)
+        with mock.patch.object(nav_history, "_connect", return_value=con_mock):
+            sc.query(None, None, "3Y", 0.6, 0.7, None, None)
+        sql = con_mock.execute.call_args[0][0]
+        self.assertIn("up3Y >= ?", sql)
+        self.assertNotIn("dc3Y", sql)
+
+
 class ScreenerViewTests(TestCase):
     def test_login_required(self):
         resp = self.client.get(reverse("screener"))

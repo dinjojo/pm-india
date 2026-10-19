@@ -24,12 +24,19 @@ def screener(request):
     benchmark = request.GET.get("benchmark") or None
     window = request.GET.get("window") if request.GET.get("window") in screener_engine.WINDOWS.values() else "3Y"
     mode = "excess" if request.GET.get("mode") == "excess" else "consistency"
-    try:
-        outperf_min = max(0.0, min(1.0, float(request.GET.get("outperf_min", "0.7"))))
-        upside_min = max(0.0, min(1.0, float(request.GET.get("upside_min", "0.7"))))
-        downside_min = max(0.0, min(1.0, float(request.GET.get("downside_min", "0.7"))))
-    except ValueError:
-        outperf_min = upside_min = downside_min = 0.7
+
+    def _min(param: str, default: float | None) -> float | None:
+        v = request.GET.get(param)
+        if v is None or v == "":
+            return default
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except ValueError:
+            return default
+
+    outperf_min = _min("outperf_min", 0.6)
+    upside_min = _min("upside_min", None)
+    downside_min = _min("downside_min", None)
 
     submitted = request.GET.get("go") is not None
     if submitted:
@@ -61,9 +68,10 @@ def screener(request):
         "sel_benchmark": benchmark or "",
         "sel_window": window,
         "sel_mode": mode,
-        "outperf_min": outperf_min,
-        "upside_min": upside_min,
-        "downside_min": downside_min,
+        "outperf_min": "" if outperf_min is None else outperf_min,
+        "upside_min": "" if upside_min is None else upside_min,
+        "downside_min": "" if downside_min is None else downside_min,
         "rows": ctx_rows,
+        "match_count": len(ctx_rows) if ctx_rows is not None else 0,
         "submitted": submitted,
     })

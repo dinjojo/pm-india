@@ -19,6 +19,7 @@
   {% endif %}
   <nav class="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium" aria-label="Tax sections">
     <a href="#overview" class="text-emerald-800 hover:underline">Overview</a>
+    {% if treport and treport.fy.rows|length > 1 %}<a href="#years" class="text-emerald-800 hover:underline">By year</a>{% endif %}
     <a href="#gains" class="text-emerald-800 hover:underline">Realised gains</a>
     <a href="#sell" class="text-emerald-800 hover:underline">Sell today</a>
     <a href="#property" class="text-emerald-800 hover:underline">Property</a>
@@ -77,10 +78,148 @@
   </div>
 </div>
 
+{# ---------- Year by year: one row per financial year ---------- #}
+{% if treport and treport.fy.rows|length > 1 %}
+<div id="years" class="mt-6 scroll-mt-28">
+  <h2 class="text-sm font-semibold text-stone-900">Capital gains by financial year</h2>
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm overflow-x-auto mt-3">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-stone-900 border-b border-stone-300 bg-stone-50">
+          <th class="px-4 py-2.5 font-semibold">Financial year</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Lots sold</th>
+          <th class="px-4 py-2.5 font-semibold text-right">STCG</th>
+          <th class="px-4 py-2.5 font-semibold text-right">LTCG</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Estimated tax</th>
+        </tr>
+      </thead>
+      <tbody class="tnum text-stone-800">
+        {% for r in treport.fy.rows %}
+        <tr class="border-t border-stone-200 {% if r.selected %}bg-emerald-50{% else %}hover:bg-stone-50{% endif %}">
+          <td class="px-4 py-2.5 font-medium text-stone-900">
+            <a href="?fy={{ r.fy }}" class="hover:underline">FY {{ r.fy }}</a>{% if r.selected %} <span class="text-xs font-semibold text-emerald-800">viewing</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right">{{ r.lots }}</td>
+          <td class="px-4 py-2.5 text-right {% if r.stcg < 0 %}negative{% endif %}">₹{{ r.stcg|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if r.ltcg < 0 %}negative{% endif %}">₹{{ r.ltcg|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right font-medium text-stone-900">₹{{ r.tax|floatformat:0|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="tnum">
+        <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+          <td class="px-4 py-2.5">All years</td>
+          <td class="px-4 py-2.5 text-right">{{ treport.fy.totals.lots }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ treport.fy.totals.stcg|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ treport.fy.totals.ltcg|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ treport.fy.totals.tax|floatformat:0|intcomma }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {# ---------- Realised gains ---------- #}
 <div id="gains" class="mt-6 scroll-mt-28">
   <h2 class="text-sm font-semibold text-stone-900">Realised capital gains — FY {{ summary.fy }}</h2>
-  {% if summary.lots %}
+  {% if summary.lots and treport %}
+  {# Summary first: one row per asset category with ST/LT split and subtotal #}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm overflow-x-auto mt-3">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-stone-900 border-b border-stone-300 bg-stone-50">
+          <th class="px-4 py-2.5 font-semibold">Asset type</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Lots</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Cost</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Proceeds</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Short-term</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Long-term</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Total gain</th>
+        </tr>
+      </thead>
+      <tbody class="tnum text-stone-800">
+        {% for g in treport.realised.groups %}
+        <tr class="border-t border-stone-200 hover:bg-stone-50">
+          <td class="px-4 py-2.5 font-medium text-stone-900">
+            <a href="#{{ g.slug }}" class="hover:underline" onclick="var d=document.querySelector('#{{ g.slug }} details'); if(d) d.open=true;">{{ g.label }}</a>
+            {% if g.starred_count %}<span class="ml-1 text-xs text-amber-800" title="Lots from starred assets">★ {{ g.starred_count }}</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right">{{ g.count }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ g.cost|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ g.proceeds|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if g.st_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.st_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if g.lt_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.lt_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right font-medium {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="tnum">
+        <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+          <td class="px-4 py-2.5">Total FY {{ summary.fy }}</td>
+          <td class="px-4 py-2.5 text-right">{{ summary.lots|length }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ treport.realised.totals.cost|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ treport.realised.totals.proceeds|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if treport.realised.totals.st_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ treport.realised.totals.st_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if treport.realised.totals.lt_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ treport.realised.totals.lt_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if treport.realised.totals.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ treport.realised.totals.gain|floatformat:0|intcomma }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  {# Detail: one collapsible section per asset category, starred assets first #}
+  {% for g in treport.realised.groups %}
+  <section id="{{ g.slug }}" class="mt-3 scroll-mt-28">
+    <details class="group">
+      <summary class="flex flex-wrap items-baseline gap-x-4 gap-y-1 cursor-pointer list-none rounded-lg px-3 py-2.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 select-none">
+        <span class="font-semibold text-stone-900">{{ g.label }}</span>
+        <span class="text-xs text-stone-800">{{ g.count }} lot{{ g.count|pluralize }}</span>
+        <span class="text-sm tnum font-medium {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</span>
+        <span class="ml-auto text-emerald-800 text-xs font-medium group-open:hidden">show lots</span>
+        <span class="ml-auto text-emerald-800 text-xs font-medium hidden group-open:inline">hide lots</span>
+      </summary>
+      <div class="bg-white rounded-xl border border-t-0 border-stone-300 shadow-sm overflow-x-auto mt-px">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-stone-900 border-b border-stone-300 bg-stone-50">
+              <th class="px-4 py-2.5 font-semibold">Asset</th>
+              <th class="px-4 py-2.5 font-semibold">Bought</th>
+              <th class="px-4 py-2.5 font-semibold">Sold</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Cost</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Proceeds</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Gain</th>
+              <th class="px-4 py-2.5 font-semibold">Type</th>
+            </tr>
+          </thead>
+          <tbody class="tnum">
+            {% for r in g.rows %}
+            <tr class="border-t border-stone-200">
+              <td class="px-4 py-2.5 text-stone-900">{% if r.priority %}<span class="text-amber-600" title="Starred asset">★</span> {% endif %}{{ r.lot.asset_name }}</td>
+              <td class="px-4 py-2.5 text-stone-800">{{ r.lot.buy_date }}</td>
+              <td class="px-4 py-2.5 text-stone-800">{{ r.lot.sell_date }}</td>
+              <td class="px-4 py-2.5 text-right text-stone-900">₹{{ r.lot.cost|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right text-stone-900">₹{{ r.lot.proceeds|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right {% if r.lot.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ r.lot.gain|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-stone-800">{% if r.lot.is_long_term %}LT{% else %}ST{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="tnum">
+            <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+              <td class="px-4 py-2.5" colspan="3">{{ g.label }} subtotal</td>
+              <td class="px-4 py-2.5 text-right">₹{{ g.cost|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right">₹{{ g.proceeds|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-xs">ST ₹{{ g.st_gain|floatformat:0|intcomma }} · LT ₹{{ g.lt_gain|floatformat:0|intcomma }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
+  </section>
+  {% endfor %}
+  {% elif summary.lots %}
   <div class="bg-white rounded-xl border border-stone-300 overflow-x-auto mt-3">
     <table class="w-full text-sm">
       <thead>
@@ -130,6 +269,116 @@
     would offset realised gains. India has no wash-sale rule — you may rebuy the same fund.
   </div>
   {% endif %}
+  {% if treport %}
+  {% with u=treport.unrealised %}
+  {% if u.starred.count %}
+  <p class="text-sm text-stone-900 mt-3 tnum"><span class="text-amber-600">★</span> <b>Starred holdings:</b> {{ u.starred.count }} lot{{ u.starred.count|pluralize }},
+    cost ₹{{ u.starred.cost|floatformat:0|intcomma }}, now ₹{{ u.starred.current|floatformat:0|intcomma }},
+    unrealised <span class="{% if u.starred.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ u.starred.gain|floatformat:0|intcomma }}</span>. Starred lots are listed first in each group.</p>
+  {% endif %}
+  <div class="bg-white rounded-xl border border-stone-300 shadow-sm overflow-x-auto mt-3">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-stone-900 border-b border-stone-300 bg-stone-50">
+          <th class="px-4 py-2.5 font-semibold">Asset type</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Lots</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Cost</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Current</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Short-term</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Long-term</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Harvestable losses</th>
+          <th class="px-4 py-2.5 font-semibold text-right">Unrealised</th>
+        </tr>
+      </thead>
+      <tbody class="tnum text-stone-800">
+        {% for g in u.groups %}
+        <tr class="border-t border-stone-200 hover:bg-stone-50">
+          <td class="px-4 py-2.5 font-medium text-stone-900">
+            <a href="#{{ g.slug }}" class="hover:underline" onclick="var d=document.querySelector('#{{ g.slug }} details'); if(d) d.open=true;">{{ g.label }}</a>
+            {% if g.starred_count %}<span class="ml-1 text-xs text-amber-800" title="Lots from starred assets">★ {{ g.starred_count }}</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-right">{{ g.count }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ g.cost|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ g.current|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if g.st_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.st_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if g.lt_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.lt_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if g.losses < 0 %}negative{% endif %}">₹{{ g.losses|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right font-medium {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="tnum">
+        <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+          <td class="px-4 py-2.5">Total</td>
+          <td class="px-4 py-2.5 text-right">{{ u.totals.count }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ u.totals.cost|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right">₹{{ u.totals.current|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if u.totals.st_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ u.totals.st_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if u.totals.lt_gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ u.totals.lt_gain|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if u.totals.losses < 0 %}negative{% endif %}">₹{{ u.totals.losses|floatformat:0|intcomma }}</td>
+          <td class="px-4 py-2.5 text-right {% if u.totals.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ u.totals.gain|floatformat:0|intcomma }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% if u.totals.hidden %}
+  <p class="text-xs text-stone-800 mt-2">{{ u.totals.hidden }} lot{{ u.totals.hidden|pluralize }} at ₹0 gain (no price feed yet) counted in totals but hidden below. <a href="?{% if summary %}fy={{ summary.fy }}&amp;{% endif %}hide_zero=0#sell" class="text-emerald-800 font-medium hover:underline">Show them</a></p>
+  {% elif not hide_zero and zero_count %}
+  <p class="text-xs text-stone-800 mt-2"><a href="?{% if summary %}fy={{ summary.fy }}&amp;{% endif %}hide_zero=1#sell" class="text-emerald-800 font-medium hover:underline">Hide {{ zero_count }} zero-gain lot{{ zero_count|pluralize }}</a></p>
+  {% endif %}
+
+  {% for g in u.groups %}{% if g.rows %}
+  <section id="{{ g.slug }}" class="mt-3 scroll-mt-28">
+    <details class="group">
+      <summary class="flex flex-wrap items-baseline gap-x-4 gap-y-1 cursor-pointer list-none rounded-lg px-3 py-2.5 bg-stone-100 hover:bg-stone-200 border border-stone-300 select-none">
+        <span class="font-semibold text-stone-900">{{ g.label }}</span>
+        <span class="text-xs text-stone-800">{{ g.rows|length }} lot{{ g.rows|length|pluralize }}{% if g.hidden %} shown · {{ g.hidden }} at ₹0 hidden{% endif %}</span>
+        <span class="text-sm tnum font-medium {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</span>
+        <span class="ml-auto text-emerald-800 text-xs font-medium group-open:hidden">show lots</span>
+        <span class="ml-auto text-emerald-800 text-xs font-medium hidden group-open:inline">hide lots</span>
+      </summary>
+      <div class="bg-white rounded-xl border border-t-0 border-stone-300 shadow-sm overflow-x-auto mt-px">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-stone-900 border-b border-stone-300 bg-stone-50">
+              <th class="px-4 py-2.5 font-semibold">Asset</th>
+              <th class="px-4 py-2.5 font-semibold">First bought</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Cost</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Current</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Unrealised</th>
+              <th class="px-4 py-2.5 font-semibold">Status</th>
+            </tr>
+          </thead>
+          <tbody class="tnum">
+            {% for r in g.rows %}
+            <tr class="border-t border-stone-200">
+              <td class="px-4 py-2.5 text-stone-900">{% if r.priority %}<span class="text-amber-600" title="Starred asset">★</span> {% endif %}{{ r.lot.asset_name }}</td>
+              <td class="px-4 py-2.5 text-stone-800">{{ r.lot.buy_date }}</td>
+              <td class="px-4 py-2.5 text-right text-stone-900">₹{{ r.lot.cost|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right text-stone-900">₹{{ r.lot.current|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right {% if r.lot.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ r.lot.gain|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-stone-800">
+                {% if r.lot.is_long_term %}LT{% elif r.lot.long_term_on > today %}LT from {{ r.lot.long_term_on|date:"d M Y" }}{% else %}ST{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="tnum">
+            <tr class="border-t-2 border-stone-300 bg-stone-50 font-semibold text-stone-900">
+              <td class="px-4 py-2.5" colspan="2">{{ g.label }} subtotal{% if g.hidden %} (incl. {{ g.hidden }} hidden){% endif %}</td>
+              <td class="px-4 py-2.5 text-right">₹{{ g.cost|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right">₹{{ g.current|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-right {% if g.gain >= 0 %}positive{% else %}negative{% endif %}">₹{{ g.gain|floatformat:0|intcomma }}</td>
+              <td class="px-4 py-2.5 text-xs">ST ₹{{ g.st_gain|floatformat:0|intcomma }} · LT ₹{{ g.lt_gain|floatformat:0|intcomma }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </details>
+  </section>
+  {% endif %}{% endfor %}
+  {% endwith %}
+  {% else %}
   <details class="bg-white rounded-xl border border-stone-300 mt-3" {% if not hide_zero %}open{% endif %}>
     <summary class="px-4 py-3 text-sm font-semibold text-emerald-800 cursor-pointer hover:underline select-none">
       All {{ unrealized|length }} unrealised lots{% if hide_zero %} ({{ zero_count }} at ₹0 gain hidden — toggle “hide zero-gain lots” in the address bar with ?hide_zero=0){% endif %}
@@ -165,6 +414,7 @@
       </table>
     </div>
   </details>
+  {% endif %}
   {% else %}
   <p class="text-stone-800 text-sm mt-2">Buy something to see unrealised gains here.</p>
   {% endif %}

@@ -47,6 +47,13 @@ class GoalResult:
     step_up_pct: float
     equity_alloc_pct: float
     schedule: list = field(default_factory=list)  # [(year, monthly_amt, year_end_value)]
+    # lumpsum_now is the one-time amount that, invested today in the goal portfolio,
+    # alone reaches net_corpus: an alternative to the SIP, not a part of it.
+    pre_goal_return: float = 0.0       # % return of the goal portfolio while accumulating
+    post_goal_return: float | None = None  # % return while the corpus is being spent (recurring)
+    derisk_years: float = 0.0          # final years before the goal held entirely in fixed income
+    years_to_goal: float = 0.0         # years from today to the goal (recurring: to the first payment)
+    years_to_start: float = 0.0        # years from today until the SIP begins
 
 
 def suggest_equity_weight(flexible: bool, years: float) -> float:
@@ -57,21 +64,54 @@ def suggest_equity_weight(flexible: bool, years: float) -> float:
     return 0.60 if years <= 7 else 0.75
 
 
+def _monthly_rates(annual_return_pct: float, months: int, derisk_months: int = 0,
+                   derisk_return_pct: float | None = None) -> list[float]:
+    """Per-month rates: the goal portfolio's return, then (de-risking) the
+    fixed-income return for the final derisk_months."""
+    r = annual_return_pct / 100 / 12
+    if not derisk_months or derisk_return_pct is None:
+        return [r] * months
+    r2 = derisk_return_pct / 100 / 12
+    cut = max(0, months - int(derisk_months))
+    return [r if i < cut else r2 for i in range(months)]
+
+
+def lumpsum_growth(annual_return_pct: float, months: int, derisk_months: int = 0,
+                   derisk_return_pct: float | None = None) -> float:
+    """Growth factor of ₹1 invested now over `months`, monthly compounding,
+    with an optional fixed-income tail (same convention as solve_sip)."""
+    g = 1.0
+    for r in _monthly_rates(annual_return_pct, months, derisk_months, derisk_return_pct):
+        g *= 1 + r
+    return g
+
+
+def _fv_existing(equity: float, taxable_fi: float, taxfree_fi: float, years: float,
+                 a: "Assumptions", derisk_years: float = 0.0) -> float:
+    """Earmarked investments compounded to the goal, each at its own post-tax rate.
+    De-risking moves the equity part to taxable fixed income for the final years."""
+    d = min(max(0.0, derisk_years), max(0.0, years))
+    eq = fv(fv(equity, a.equity_return, years - d), a.fixed_return, d)
+    return eq + fv(taxable_fi, a.fixed_return, years) + fv(taxfree_fi, a.taxfree_return, years)
+
+
 def solve_sip(net_corpus: float, annual_return_pct: float, months: int,
-              step_up_pct: float) -> tuple[float, list]:
+              step_up_pct: float, derisk_months: int = 0,
+              derisk_return_pct: float | None = None) -> tuple[float, list]:
     """Monthly SIP that grows step_up% each year and reaches net_corpus.
     Binary-searched on a month-by-month simulation (mirrors the workbook's
-    investment schedule)."""
+    investment schedule). With derisk_months, the portfolio earns
+    derisk_return_pct (fixed income) for the last derisk_months instead."""
     if months <= 0:
         return 0.0, []
-    r = annual_return_pct / 100 / 12
+    rates = _monthly_rates(annual_return_pct, months, derisk_months, derisk_return_pct)
 
     def end_value(first_month: float) -> float:
         bal, m = 0.0, first_month
         for i in range(months):
             if i and i % 12 == 0:
                 m *= 1 + step_up_pct / 100
-            bal = bal * (1 + r) + m
+            bal = bal * (1 + rates[i]) + m
         return bal
 
     lo, hi = 0.0, max(net_corpus, 1.0)
@@ -87,7 +127,7 @@ def solve_sip(net_corpus: float, annual_return_pct: float, months: int,
     for i in range(months):
         if i and i % 12 == 0:
             m *= 1 + step_up_pct / 100
-        bal = bal * (1 + r) + m
+        bal = bal * (1 + rates[i]) + m
         if (i + 1) % 12 == 0 or i == months - 1:
             schedule.append(((i + 1) // 12 if (i + 1) % 12 == 0 else None, m, round(bal)))
     return round(sip, 0), schedule
@@ -97,58 +137,90 @@ def one_time_goal(*, cost_today: float, years_to_goal: float, years_to_start: fl
                   flexible: bool = False, inflation_override: float | None = None,
                   current_equity: float = 0.0, current_taxable_fi: float = 0.0,
                   current_taxfree_fi: float = 0.0, lumpsum_expected: float = 0.0,
-                  step_up_pct: float = 5.0, a: Assumptions | None = None) -> GoalResult:
-    """Step 4A block, verbatim math."""
+                  step_up_pct: float = 5.0, derisk_years: float = 0.0,
+                  a: Assumptions | None = None) -> GoalResult:
+    """Step 4A block.
+
+    - Earmarked investments exist today, so they compound for the full
+      years_to_goal (not just the SIP window) at their own post-tax rates.
+    - derisk_years > 0: the whole goal portfolio (SIP and earmarked equity) sits
+      in taxable fixed income for the final derisk_years — Freefincal's "move
+      the money to safety before the goal" rule. 0 keeps the workbook's single
+      blended return.
+    - lumpsum_now is the one-time investment today that alone reaches the net
+      corpus (PV at the goal portfolio's return); monthly_sip is the separate
+      SIP-only answer.
+    """
     a = a or Assumptions()
     infl = inflation_override if inflation_override else a.goal_inflation
-    future_cost = max(0.0, fv(cost_today, infl, years_to_goal))
-    y = max(0.0, years_to_goal - years_to_start)
-    fv_current = (fv(current_equity, a.equity_return, y)
-                  + fv(current_taxable_fi, a.fixed_return, y)
-                  + fv(current_taxfree_fi, a.taxfree_return, y))
+    years = max(0.0, float(years_to_goal))
+    d = min(max(0.0, float(derisk_years)), years)
+    future_cost = max(0.0, fv(cost_today, infl, years))
+    fv_current = _fv_existing(current_equity, current_taxable_fi, current_taxfree_fi, years, a, d)
     net = max(0.0, future_cost - fv_current - lumpsum_expected)
-    eq_w = suggest_equity_weight(flexible, years_to_goal)
+    eq_w = suggest_equity_weight(flexible, years)
     ret = _blended(eq_w, a.equity_return, a.fixed_return)
-    months = int(round(years_to_goal - years_to_start) * 12) if years_to_goal > years_to_start else 0
-    # A goal already funded: no SIP needed.
-    if months <= 0:
-        sip = net if net > 0 else 0.0  # due immediately — show as lumpsum
+    months = int(round(years - years_to_start) * 12) if years > years_to_start else 0
+    derisk_m = int(round(d * 12))
+    schedule: list = []
+    if months > 0:
+        sip, schedule = solve_sip(net, ret, months, step_up_pct,
+                                  min(months, derisk_m), a.fixed_return)
     else:
-        sip, schedule = solve_sip(net, ret, months, step_up_pct)
-    lumpsum = max(0.0, net) if months <= 0 else max(0.0, net * 0.25)  # 25% lumpsum option, rest SIP
+        sip = 0.0  # no SIP window left: only a lumpsum can fund it
+    total_m = int(round(years * 12))
+    lumpsum = net / lumpsum_growth(ret, total_m, derisk_m, a.fixed_return) if total_m > 0 else net
     return GoalResult(future_cost=round(future_cost), fv_current=round(fv_current),
-                      net_corpus=round(net), lumpsum_now=round(lumpsum),
+                      net_corpus=round(net), lumpsum_now=round(max(0.0, lumpsum)),
                       monthly_sip=sip, step_up_pct=step_up_pct,
-                      equity_alloc_pct=round(eq_w * 100), schedule=schedule)
+                      equity_alloc_pct=round(eq_w * 100), schedule=schedule,
+                      pre_goal_return=ret, post_goal_return=None, derisk_years=d,
+                      years_to_goal=years, years_to_start=float(years_to_start))
 
 
 def recurring_goal(*, annual_cost_today: float, years_until_start: float, years_duration: float,
                    flexible: bool = False, inflation_override: float | None = None,
                    current_equity: float = 0.0, current_taxable_fi: float = 0.0,
                    current_taxfree_fi: float = 0.0, step_up_pct: float = 5.0,
+                   derisk_years: float = 0.0, post_goal_return: float | None = None,
                    a: Assumptions | None = None) -> GoalResult:
     """Step 4B: corpus = PV (at goal start) of a growing annuity of annual costs,
-    then planned like a one-time goal from today."""
+    then planned like a one-time goal from today.
+
+    Costs are paid at the start of each year (fees, premiums), so the first
+    payment is due on the goal date: PV is an annuity-due. post_goal_return is
+    the return earned on the corpus while it is being spent (None = the same
+    blended return as before the goal). derisk_years and lumpsum_now behave as
+    in one_time_goal."""
     a = a or Assumptions()
     infl = (inflation_override if inflation_override else a.goal_inflation) / 100
     eq_w = suggest_equity_weight(flexible, years_until_start + years_duration)
-    ret = _blended(eq_w, a.equity_return, a.fixed_return) / 100
-    # PV of growing annuity: c1 * [1 - ((1+g)/(1+r))^n] / (r - g), c1 at start year
+    ret_pct = _blended(eq_w, a.equity_return, a.fixed_return)
+    post_pct = ret_pct if post_goal_return is None else float(post_goal_return)
     c1 = annual_cost_today * (1 + infl) ** years_until_start
-    n, g, r = int(round(years_duration)), infl, ret
-    pv = c1 * (1 - ((1 + g) / (1 + r)) ** n) / (r - g) if abs(r - g) > 1e-9 else c1 * n
+    n, g, r = int(round(years_duration)), infl, post_pct / 100
+    if abs(r - g) > 1e-9:
+        pv = c1 * (1 - ((1 + g) / (1 + r)) ** n) / (r - g) * (1 + r)
+    else:
+        pv = c1 * n
     pv = max(0.0, pv)
-    y = max(0.0, years_until_start)
-    fv_current = (fv(current_equity, a.equity_return, y)
-                  + fv(current_taxable_fi, a.fixed_return, y)
-                  + fv(current_taxfree_fi, a.taxfree_return, y))
+    y = max(0.0, float(years_until_start))
+    d = min(max(0.0, float(derisk_years)), y)
+    fv_current = _fv_existing(current_equity, current_taxable_fi, current_taxfree_fi, y, a, d)
     net = max(0.0, pv - fv_current)
-    months = int(round(years_until_start) * 12)
-    sip, schedule = solve_sip(net, ret / 1, months, step_up_pct) if months > 0 else (net if net > 0 else 0.0, [])
+    months = int(round(y) * 12)
+    derisk_m = int(round(d * 12))
+    if months > 0:
+        sip, schedule = solve_sip(net, ret_pct, months, step_up_pct, derisk_m, a.fixed_return)
+        lumpsum = net / lumpsum_growth(ret_pct, months, derisk_m, a.fixed_return)
+    else:
+        sip, schedule, lumpsum = 0.0, [], net
     return GoalResult(future_cost=round(pv), fv_current=round(fv_current),
-                      net_corpus=round(net), lumpsum_now=round(max(0.0, net * 0.25)) if months > 0 else round(net),
+                      net_corpus=round(net), lumpsum_now=round(max(0.0, lumpsum)),
                       monthly_sip=sip, step_up_pct=step_up_pct,
-                      equity_alloc_pct=round(eq_w * 100), schedule=schedule)
+                      equity_alloc_pct=round(eq_w * 100), schedule=schedule,
+                      pre_goal_return=ret_pct, post_goal_return=post_pct, derisk_years=d,
+                      years_to_goal=y, years_to_start=0.0)
 
 
 def goal_scenarios(*, kind: str, a: Assumptions | None = None, **kwargs) -> list[dict]:
@@ -158,7 +230,9 @@ def goal_scenarios(*, kind: str, a: Assumptions | None = None, **kwargs) -> list
     Base  : workbook assumptions
     Bull  : equity 12%, FI 7%, inflation 5%
     Decision variants on the base case: 10% step-up instead of the plan's,
-    and (retirement only) retiring 3 years later.
+    (retirement only) retiring 3 years later, and (one-time / recurring) de-risking:
+    the goal money sits in fixed income for the last 3 years before the goal
+    (recurring: the corpus is also spent from a conservative 25%-equity mix).
     Returns [{label, monthly_sip, net_corpus, note}].
     """
     a = a or Assumptions()
@@ -175,7 +249,12 @@ def goal_scenarios(*, kind: str, a: Assumptions | None = None, **kwargs) -> list
     variants.append(("10% step-up", a, {**kwargs, "step_up_pct": 10}))
     if kind == "retirement":
         late = {**kwargs, "retire_age": int(kwargs.get("retire_age", 50)) + 3}
-        variants.append(("Retire at 53", a, late))
+        variants.append((f"Retire at {late['retire_age']}", a, late))
+    else:
+        derisk = {**kwargs, "derisk_years": 3}
+        if kind == "recurring":
+            derisk["post_goal_return"] = _blended(0.25, a.equity_return, a.fixed_return)
+        variants.append(("De-risk 3y", a, derisk))
 
     out = []
     for label, asm, kw in variants:
@@ -183,10 +262,15 @@ def goal_scenarios(*, kind: str, a: Assumptions | None = None, **kwargs) -> list
         step_up = 10 if label == "10% step-up" else step
         if kind == "one_time":
             r = one_time_goal(a=asm, step_up_pct=step_up, **kw)
-            note = f"equity {r.equity_alloc_pct}%"
+            note = (f"all fixed income for the last {r.derisk_years:g} years" if r.derisk_years
+                    else f"equity {r.equity_alloc_pct}%")
         elif kind == "recurring":
             r = recurring_goal(a=asm, step_up_pct=step_up, **kw)
-            note = f"equity {r.equity_alloc_pct}%"
+            if label == "De-risk 3y":
+                note = "spent from a 25%-equity mix" + (
+                    f", fixed income for the last {r.derisk_years:g} years" if r.derisk_years else "")
+            else:
+                note = f"equity {r.equity_alloc_pct}%"
         else:
             r = retirement_plan(a=asm, step_up_pct=step_up, **kw)
             note = ("on track" if r.on_track
@@ -327,6 +411,8 @@ class RetirementResult:
     cash_flow: list = field(default_factory=list)    # year-by-year drawdown of the funded plan
     depletion_age: int | None = None                 # in cash_flow
     current_path_depletion_age: int | None = None    # with today's investments only
+    lumpsum_now: float = 0                           # one-time investment today instead of the SIP
+    pre_goal_return: float = 0.0                     # % return assumed while accumulating
 
 
 def retirement_plan(*, current_age: int, retire_age: int, monthly_expense: float,
@@ -391,7 +477,9 @@ def retirement_plan(*, current_age: int, retire_age: int, monthly_expense: float
                       + lumpsum_at_retirement)
     net = max(0.0, gross - corpus_in_hand)
     months = int(round(yrs) * 12)
-    sip, schedule = solve_sip(net, _blended(0.65, a.equity_return, a.fixed_return), months, step_up_pct) if months > 0 else (0.0, [])
+    pre_ret = _blended(0.65, a.equity_return, a.fixed_return)
+    sip, schedule = solve_sip(net, pre_ret, months, step_up_pct) if months > 0 else (0.0, [])
+    lumpsum = net / lumpsum_growth(pre_ret, months) if months > 0 else net
 
     def run(start: float) -> tuple[list[dict], int | None]:
         rows, dep = simulate_drawdown(start, needs, buckets)
@@ -422,7 +510,8 @@ def retirement_plan(*, current_age: int, retire_age: int, monthly_expense: float
                                       "equity_pct": b.equity_pct, "allocation": round(x)}
                                      for b, x in zip(buckets, alloc)],
                             cash_flow=cash_flow, depletion_age=depletion_age,
-                            current_path_depletion_age=current_dep)
+                            current_path_depletion_age=current_dep,
+                            lumpsum_now=round(max(0.0, lumpsum)), pre_goal_return=pre_ret)
 
 
 def sip_affordability(monthly_sip: float, monthly_take_home: float | None) -> dict | None:
@@ -456,3 +545,176 @@ def young_earner_advice(*, current_age: int, monthly_expense: float, annual_expe
     return {"emergency_fund": emergency, "monthly_sip": sip, "step_up_pct": 10,
             "equity_pct": 100, "revisit_in_years": max(0, 26 - int(current_age)),
             "affordability": sip_affordability(sip, monthly_take_home)}
+
+
+# ------------------------------------------------------- goal detail context
+
+def assumption_notes(a: Assumptions, *, kind: str = "one_time",
+                     goal_inflation: float | None = None) -> list[dict]:
+    """Plain-language notes on the return and inflation assumptions: what
+    "post-tax" means in India today, plus realism warnings when the numbers are
+    more optimistic than Freefincal's defaults. Returns [{tone, text}] with
+    tone "info" or "warn"."""
+    notes = [
+        {"tone": "info", "text": (
+            f"Returns are after tax. Equity at {a.equity_return:g}% assumes long-term gains taxed "
+            "at 12.5% above the ₹1.25 lakh yearly exemption. Taxable fixed income "
+            f"(FDs, debt funds) at {a.fixed_return:g}% is already net of slab-rate tax: debt fund "
+            "gains bought after 1 April 2023 get no indexation. "
+            f"PPF/EPF at {a.taxfree_return:g}% is tax-free.")},
+    ]
+    if a.equity_return > 12:
+        notes.append({"tone": "warn", "text": (
+            f"Equity at {a.equity_return:g}% after tax is optimistic. Freefincal plans with 10%: "
+            "lower it, or the SIP shown here will be too small.")})
+    infl = a.inflation if kind == "retirement" else (goal_inflation or a.goal_inflation)
+    if a.equity_return - infl > 5:
+        notes.append({"tone": "warn", "text": (
+            f"Equity beats inflation by {a.equity_return - infl:g} points a year here. "
+            "Real returns above about 5% rarely hold over long periods.")})
+    if a.fixed_return > a.taxfree_return:
+        notes.append({"tone": "warn", "text": (
+            f"Taxable fixed income ({a.fixed_return:g}%) beats PPF/EPF ({a.taxfree_return:g}%) "
+            "after tax. That is unusual, so check whether it is a pre-tax rate.")})
+    if kind != "retirement" and goal_inflation is not None and goal_inflation < a.inflation:
+        notes.append({"tone": "warn", "text": (
+            f"Goal inflation of {goal_inflation:g}% is below general inflation ({a.inflation:g}%). "
+            "Education, healthcare and housing usually rise faster than general inflation, not slower.")})
+    return notes
+
+
+def recent_monthly_investing(buys, today=None, months: int = 6) -> float | None:
+    """Average monthly purchase amount over the last `months` months, a proxy
+    for "current SIP" across all tracked accounts. `buys` is an iterable of
+    (date, amount). None when nothing was bought in the window."""
+    import datetime as _dt
+    today = today or _dt.date.today()
+    since = today - _dt.timedelta(days=round(months * 30.44))
+    total = sum(float(amt or 0) for d, amt in buys if since < d <= today)
+    return round(total / months) if total > 0 else None
+
+
+def _sip_path(first_month: float, rates: list[float], start_month: int, total_months: int,
+              step_up_pct: float) -> list[float]:
+    """Year-end SIP balances from today (index 0 = today) to total_months.
+    The SIP starts at start_month and steps up every 12 SIP months; rates are
+    indexed by SIP month (as in solve_sip)."""
+    path, bal, m, k = [0.0], 0.0, first_month, 0
+    for i in range(total_months):
+        if i >= start_month:
+            if k and k % 12 == 0:
+                m *= 1 + step_up_pct / 100
+            bal = bal * (1 + rates[k]) + m
+            k += 1
+        if (i + 1) % 12 == 0 or i == total_months - 1:
+            path.append(bal)
+    return path
+
+
+def goal_progress(plan, result, a: Assumptions | None = None, *,
+                  current_sip: float | None = None, start_year: int | None = None) -> dict:
+    """Everything the goal detail page needs to answer "am I on track?".
+
+    plan: a GoalPlan (duck-typed, any object with the same attributes).
+    result: the GoalResult / RetirementResult computed for it.
+    a: the assumptions used for the result (saved settings, with the retirement
+       inflation override applied).
+    current_sip: what the user invests per month today (None = unknown; the
+       projection then uses existing investments only).
+
+    Returns target, projected corpus at the goal date, surplus (+) or
+    shortfall (-), required vs current SIP, an assumptions table, notes and a
+    yearly chart series (required path, current path, target).
+    """
+    import datetime as _dt
+    import json as _json
+    a = a or Assumptions()
+    kind = str(plan.kind)
+    eq, tfi, tff = (float(plan.current_equity or 0), float(plan.current_taxable_fi or 0),
+                    float(plan.current_taxfree_fi or 0))
+    step = float(result.step_up_pct)
+    infl_override = float(plan.inflation_override) if getattr(plan, "inflation_override", None) else None
+    if kind == "retirement":
+        years = max(0, int((plan.retire_age or 0) - (plan.current_age or 0)))
+        start, derisk, target = 0.0, 0.0, float(result.gross_corpus)
+        end_lumpsum = float(plan.lumpsum_expected or 0)
+        ret = result.pre_goal_return
+        labels_base, label_fmt = int(plan.current_age or 0), "Age {}"
+        goal_label = f"retirement at {plan.retire_age}"
+        infl_text = f"{a.inflation:g}% now, {a.inflation_retirement:g}% in retirement"
+        post_text = (f"{min(b['return_pct'] for b in result.buckets):g}–"
+                     f"{max(b['return_pct'] for b in result.buckets):g}% across the bucket ladder"
+                     if result.buckets else "—")
+        goal_infl = None
+    else:
+        years = max(0, int(round(result.years_to_goal)))
+        start, derisk, target = result.years_to_start, result.derisk_years, float(result.future_cost)
+        end_lumpsum = float(plan.lumpsum_expected or 0) if kind == "one_time" else 0.0
+        ret = result.pre_goal_return
+        labels_base = start_year or _dt.date.today().year
+        label_fmt = "{}"
+        goal_label = (f"the goal in {labels_base + years}" if kind == "one_time"
+                      else f"the first payment in {labels_base + years}")
+        goal_infl = infl_override or a.goal_inflation
+        infl_text = f"{goal_infl:g}% a year on the goal cost"
+        if kind == "recurring":
+            post_text = f"{result.post_goal_return:g}% while the corpus is spent"
+        else:
+            post_text = "Not needed: a one-time goal is spent on the goal date"
+    total_m = years * 12
+    sip_m = max(0, int(round(years - start)) * 12) if years > start else 0
+    derisk_m = min(sip_m, int(round(derisk * 12)))
+    rates = _monthly_rates(ret, sip_m, derisk_m, a.fixed_return)
+    start_m = total_m - sip_m
+
+    if kind == "retirement" or not derisk:
+        existing = [_fv_existing(eq, tfi, tff, t, a) for t in range(years + 1)]
+    else:  # equity switches to FI only in the final `derisk` years
+        d = derisk
+        existing = [fv(fv(eq, a.equity_return, min(t, years - d)), a.fixed_return, max(0.0, t - (years - d)))
+                    + fv(tfi, a.fixed_return, t) + fv(tff, a.taxfree_return, t)
+                    for t in range(years + 1)]
+    req_sip = float(result.monthly_sip or 0)
+    req = _sip_path(req_sip, rates, start_m, total_m, step) if total_m else [0.0]
+    cur = (_sip_path(float(current_sip), rates, start_m, total_m, step)
+           if total_m and current_sip else [0.0] * (years + 1))
+    required_path = [e + s for e, s in zip(existing, req)]
+    current_path = [e + s for e, s in zip(existing, cur)]
+    required_path[-1] += end_lumpsum
+    current_path[-1] += end_lumpsum
+    if req_sip == 0 and result.net_corpus > 0:
+        # No SIP window: the required path is the lumpsum-today alternative.
+        lump = float(result.lumpsum_now)
+        g = [lumpsum_growth(ret, t * 12) for t in range(years + 1)]
+        required_path = [c + lump * gg for c, gg in zip(current_path, g)]
+    projected = current_path[-1]
+    gap = projected - target
+    on_track = result.net_corpus <= 0 or gap >= 0
+    funded_pct = 100 if target <= 0 else max(0, min(100, round(projected / target * 100)))
+
+    assumptions = [
+        ("Inflation", infl_text),
+        ("Equity return, after tax", f"{a.equity_return:g}%"),
+        ("Fixed income return, after tax", f"{a.fixed_return:g}% taxable · {a.taxfree_return:g}% PPF/EPF"),
+        ("Expected return before the goal", f"{ret:g}% a year"
+         + (f", all fixed income ({a.fixed_return:g}%) for the last {derisk:g} years" if derisk else "")),
+        ("Return after the goal", post_text),
+        ("Years left", f"{years}" + (f" (SIP starts in {start:g})" if start else "")),
+        ("SIP step-up", f"{step:g}% a year"),
+    ]
+    chart = {"labels": [label_fmt.format(labels_base + t) for t in range(years + 1)],
+             "required": [round(v) for v in required_path],
+             "current": [round(v) for v in current_path],
+             "target": round(target),
+             "has_current_sip": bool(current_sip)}
+    return {
+        "target": round(target), "projected": round(projected), "gap": round(gap),
+        "gap_abs": round(abs(gap)), "on_track": on_track, "funded_pct": funded_pct,
+        "required_sip": round(req_sip), "current_sip": round(current_sip) if current_sip else None,
+        "sip_gap": round(float(current_sip) - req_sip) if current_sip else None,
+        "lumpsum_now": round(float(result.lumpsum_now or 0)),
+        "years_left": years, "goal_label": goal_label,
+        "assumptions": assumptions,
+        "notes": assumption_notes(a, kind=kind, goal_inflation=goal_infl),
+        "chart": _json.dumps(chart),
+    }
