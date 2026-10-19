@@ -67,7 +67,58 @@ What is worth building, in order:
    - Ulcer Index.
 4. **TruthLens rule (permanent)**: any model or signal we show must beat the naive baseline on walk-forward data or it does not ship.
 
-## 4. Sources
+## 4. What else freefincal looks for, his data sources, and Reddit reception
+
+### Everything he tracks beyond fund metrics
+
+His full toolkit, checked across the site:
+
+- **Goal-based planning first, funds second.** His screener docs say to use it only after: define need and duration, decide asset allocation (robo-advisor tool), decide product category, then screen. Fund picking is step 4 of 4.
+- **Portfolio-level review, not fund-level.** Recent article "Stop Comparing Funds; Start Comparing Portfolios" and the portfolio audit tool: backtest the whole portfolio against Nifty 100 or Nifty 500. He repeats "concentrate on the portfolio return, individual funds will have up and down rides."
+- **Category-matched benchmarks.** Midcap 150 for midcap funds, Smallcap 250 for smallcap funds, Nifty 50 TRI for largecap. He criticises Morningstar India for using BSE 100 for every fund type.
+- **ETF tracking difference**, not just tracking error (a low error can still drift from the benchmark return).
+- **Index-category rolling return comparisons** (Nifty 50 vs Next 50 vs Midcap 150 vs Smallcap 250), published monthly.
+- **Mandate stability check**: "See if the fund's investment mandate was different in the past. If so, past performance doesn't matter." This is a manual step none of the portals automate.
+- **Nifty PE valuation tool** for timing lumpsums, and a moving-average tactical buy/sell tool.
+- **His own philosophy**: do not expect returns from SIPs, control the contribution amount instead; annual reviews, ignore daily prices; retirement bucket strategy (low-risk debt buckets).
+
+### Data sources he uses (from his "Data sources for DIY investors" post, May 2024)
+
+- MF NAV history from April 2006: AMFI (via Excel Power Query) or mfapi.in. Same two sources we already use, plus Yahoo Finance for stocks.
+- Stocks/ETFs: Moneycontrol historical prices (adjusted for splits/bonus, not dividends) or Yahoo Finance (adjusted for dividends/splits, not bonus). He notes the adjustment gap explicitly.
+- NPS NAV: npsnav.in and purifiedbytes.com, both incomplete, "use cautiously".
+- Gold prices in INR/USD, petrol/diesel price history, Nifty PE.
+- Interactive chart data: scrape the XHR network tab in browser devtools.
+
+So our tigzig Parquet + mfapi tier is already equal or better than his stack. The one thing he has that we do not scrape: fund mandate/change-in-fund-manager history, which he checks manually from AMC fact sheets.
+
+### Reddit reception: is his methodology considered correct?
+
+Reddit blocks full comment-thread scraping, so this is from thread excerpts, AMA posts and search snippets. Directionally consistent across r/IndiaInvestments, r/mutualfunds, r/personalfinanceindia and r/FIRE_Ind.
+
+**Positive**
+- r/mutualfunds thread on his lessons: "Freefincal changed the way I look at personal finance in a good way. I learnt about asset allocation, portfolio rebalancing, sequence of returns."
+- r/IndianStockMarket: "M. Pattabiraman is my absolutely favourite" (linked from his own profile, so mildly self-selected).
+- He has done AMAs on r/IndiaInvestments and r/FIREIndia; r/FIRE_Ind quotes his style as "streamlined investments to goals, saved money like crazy, tempered greed".
+- Credibility anchors that even critics accept: nine of his calculators are published on SEBI's investor education portal, and Livemint profiles him twice as a portfolio guru.
+
+**Critical / caveats**
+- r/mutualfunds thread "Mr. Pattu is against Small Caps": commenters note he pushes new investors to Nifty 50 index funds and is "against active mutual funds overall". His screener answers this indirectly (it screens active funds fairly), but his advice stance is index-first.
+- A professional r/CFP thread (US context, same math) exposed a real technical caveat on capture ratios: with daily return intervals, downside capture is floored at -100 percent so it drifts toward 100 percent regardless of quality, upside capture diverges from 100, and "there is no industry standard method of calculating capture ratios, FactSet uses cumulative returns". Freefincal computes his on monthly CAGRs, which avoids the worst of this interval bias, but it confirms the metric is calculation-sensitive.
+- His own posts carry the honest caveats: rolling return consistency "should not be interpreted as a probability of future outperformance", returns vs downside capture show weak correlation with outliers (so he says to read upside and downside separately, not just the ratio), and "good returns imply good downside protection but do not guarantee low stress".
+
+**Net assessment**: his methodology is considered correct and honest by the community. The criticism is about his advice stance (index-first, anti-smallcap for beginners) rather than the math. His own caveats about capture ratios and rolling returns are more conservative than what most portals publish. The one methodological gap found anywhere: capture ratios depend on calculation interval and there is no industry standard, so any capture numbers we compute should state their interval (monthly CAGR, category benchmark) on screen, the way he insists Morningstar's BSE 100 default must be stated.
+
+### What this means for pm-india
+
+Adopt from freefincal, in addition to the metrics already queued (rolling returns, capture ratios, SIP rolling returns, Ulcer Index):
+
+1. Category-matched benchmark mapping for capture ratios, never one index for all funds.
+2. Mandate-change warning on the fund analytics page (fund manager change, mandate change, merge history) as a manual-note field, since no API provides it.
+3. Portfolio-level rolling return vs NIFTY 500 (we own the benchmark series already), not just per-fund views. This matches his "compare portfolios, not funds" stance and our MPT tools.
+4. State the calculation basis on screen wherever capture or consistency scores appear.
+
+## 5. Sources
 
 - freefincal: how upside/downside capture is calculated; how not to use rolling return charts; introduction to capture ratios; equity screener usage guide; SIP rolling returns; data sources for DIY investors (May 2024)
 - GitHub repos listed above, plus Yashvi-Vekariya / Mutual-Fund-Predictive-Analytics (surveyed, forecasting on historical NAV, same random-walk limitation)
