@@ -147,7 +147,7 @@ def value_gaps(user, today: date | None = None) -> dict:
         pp = prices.get((h.asset.asset_type, h.asset.identifier)) if h.asset.identifier else None
         if pp is None:
             if h.current_value is None:
-                missing.append({"name": h.asset.name, "invested": h.invested})
+                missing.append({"name": h.asset.name, "invested": h.invested, "asset": h.asset})
         elif (today - pp.as_of).days > STALE_PRICE_DAYS:
             stale.append({"name": h.asset.name, "as_of": pp.as_of,
                           "age_days": (today - pp.as_of).days})
@@ -224,7 +224,7 @@ def tax_events(today: date | None = None, window: int = TAX_WINDOW_DAYS) -> list
         days = (lot.long_term_on - today).days
         if 0 <= days <= window:
             out.append({"name": lot.asset_name, "long_term_on": lot.long_term_on,
-                        "days": days, "gain": lot.gain})
+                        "days": days, "gain": lot.gain, "asset": lot.asset})
     return sorted(out, key=lambda e: e["days"])
 
 

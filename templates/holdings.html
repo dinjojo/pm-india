@@ -170,11 +170,11 @@
       </div>
       {% if g.top_gainer or g.top_loser or g.largest or g.spark %}
       <div class="flex flex-wrap items-center gap-x-5 gap-y-1 mt-1.5 text-xs text-stone-800 tnum">
-        {% if g.top_gainer %}<span><span class="positive font-semibold">▲ Top contributor</span> {{ g.top_gainer.name }} <span class="positive font-medium">+₹{{ g.top_gainer.gain|floatformat:0|intcomma }}</span></span>{% endif %}
+        {% if g.top_gainer %}<span><span class="positive font-semibold">▲ Top contributor</span> {% include "partials/asset_link.html" with asset=g.top_gainer.asset name=g.top_gainer.name only %} <span class="positive font-medium">+₹{{ g.top_gainer.gain|floatformat:0|intcomma }}</span></span>{% endif %}
         {% if g.top_gainer and g.top_loser %}<span class="text-stone-400" aria-hidden="true">·</span>{% endif %}
-        {% if g.top_loser %}<span><span class="negative font-semibold">▼ Top detractor</span> {{ g.top_loser.name }} <span class="negative font-medium">₹{{ g.top_loser.gain|floatformat:0|intcomma }}</span></span>{% endif %}
+        {% if g.top_loser %}<span><span class="negative font-semibold">▼ Top detractor</span> {% include "partials/asset_link.html" with asset=g.top_loser.asset name=g.top_loser.name only %} <span class="negative font-medium">₹{{ g.top_loser.gain|floatformat:0|intcomma }}</span></span>{% endif %}
         {% if g.top_loser and g.largest %}<span class="text-stone-400" aria-hidden="true">·</span>{% endif %}
-        {% if g.largest %}<span><span class="font-semibold text-stone-900">Largest</span> {{ g.largest.name }} · {{ g.largest.share|floatformat:0 }}% of group</span>{% endif %}
+        {% if g.largest %}<span><span class="font-semibold text-stone-900">Largest</span> {% include "partials/asset_link.html" with asset=g.largest.asset name=g.largest.name only %} · {{ g.largest.share|floatformat:0 }}% of group</span>{% endif %}
         {% if g.spark %}<span class="inline-flex items-center gap-1.5"><span class="font-semibold text-stone-900">Trend</span><svg viewBox="0 0 120 28" class="w-20 h-4" preserveAspectRatio="none" aria-hidden="true"><polyline points="{{ g.spark.points }}" fill="none" stroke="{% if g.spark.last >= g.spark.first %}#047857{% else %}#b91c1c{% endif %}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>{% if g.spark.change_pct != None %}{{ g.spark.change_pct|floatformat:1 }}%{% endif %} <span title="Snapshot value incl. new money{% if g.spark.estimated %}; part of the window is backfilled estimates{% endif %}">({% if g.spark.estimated %}incl. estimates, {% endif %}since {{ hreport.spark_range.0|date:"d M" }})</span></span>{% endif %}
       </div>
       {% endif %}
@@ -206,7 +206,7 @@
               <span id="star-{{ h.holding_pk }}">{% include "partials/priority_star.html" with holding_pk=h.holding_pk priority=h.priority %}</span>
             </td>
             <td class="px-4 py-3 font-medium">
-              {{ h.name }}
+              {% include "partials/asset_link.html" with asset=h.asset name=h.name only %}
               {% if h.manual_value %}<span class="ml-1 text-xs text-amber-800 bg-amber-100 rounded px-1.5 py-0.5" title="No price feed — value entered manually">manual</span>{% endif %}
             </td>
             <td class="px-4 py-3 text-stone-800">{{ h.account }}{% if h.owner %} · {{ h.owner }}{% endif %}</td>

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from core import views
+from core.views_protection import protection
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -16,6 +17,7 @@ urlpatterns = [
     path("funds/", views.funds, name="funds"),
     path("funds/<int:code>/", views.fund_detail, name="fund_detail"),
     path("goals/", views.goals, name="goals"),
+    path("protection/", protection, name="protection"),
     path("goals/new/", views.goal_create, name="goal_create"),
     path("goals/settings/", views.goal_settings, name="goal_settings"),
     path("goals/<int:pk>/", views.goal_detail, name="goal_detail"),

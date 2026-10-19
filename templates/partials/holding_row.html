@@ -1,7 +1,7 @@
 {% load humanize %}
 <tr id="holding-{{ h.holding_pk }}" class="border-t border-stone-100">
   <td class="px-4 py-3">
-    {{ h.name }}
+    {% include "partials/asset_link.html" with asset=h.asset name=h.name only %}
     {% if h.manual_value %}<span class="ml-1 text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5" title="No price feed — value entered manually">manual</span>{% endif %}
   </td>
   <td class="px-4 py-3 text-stone-500">{{ h.asset_type_label }}</td>

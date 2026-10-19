@@ -114,3 +114,39 @@ class GoalViewTests(TestCase):
         self.assertIn("Scenarios", body)
         self.assertIn("Bear", body)
         self.assertIn("Bull", body)
+
+
+class AssetResearchLinkTests(TestCase):
+    def test_holdings_dashboard_tax_and_updated_row_share_quote_links(self):
+        from datetime import date
+        from core.models import Account, Asset, Holding, PricePoint, Transaction
+        user = get_user_model().objects.create_user("links")
+        self.client.force_login(user)
+        account = Account.objects.create(user=user, name="Personal")
+        assets = [
+            Asset.objects.create(asset_type="stock", name="Reliance", identifier="RELIANCE"),
+            Asset.objects.create(asset_type="stock", name="ETF", identifier="NIFTYBEES.NS"),
+            Asset.objects.create(asset_type="stock", name="M and M", identifier="M&M"),
+            Asset.objects.create(asset_type="mf", name="Known fund", identifier="known",
+                                 metadata={"scheme_code": 122639}),
+            Asset.objects.create(asset_type="mf", name="Unknown fund", identifier="unknown"),
+        ]
+        for asset in assets:
+            Holding.objects.create(asset=asset, account=account, quantity=10, invested=1000)
+            Transaction.objects.create(asset=asset, account=account, kind="buy",
+                                       date=date(2022, 1, 1), quantity=Decimal(10), price=Decimal(100))
+            PricePoint.objects.create(asset_type=asset.asset_type, identifier=asset.identifier,
+                                       price=110, as_of=date.today())
+        for page in ("holdings", "dashboard", "tax"):
+            response = self.client.get(reverse(page))
+            self.assertContains(response, 'href="https://finance.yahoo.com/quote/RELIANCE.NS"')
+            self.assertContains(response, 'href="https://finance.yahoo.com/quote/NIFTYBEES.NS"')
+            self.assertNotContains(response, "NIFTYBEES.NS.NS")
+            self.assertContains(response, 'href="https://finance.yahoo.com/quote/M%26M.NS"')
+            self.assertContains(response, 'rel="noopener noreferrer"')
+            self.assertContains(response, 'href="/funds/122639/"')
+            self.assertContains(response, "Unknown fund")
+            self.assertNotContains(response, "/funds/unknown/")
+        holding = Holding.objects.get(asset=assets[0])
+        response = self.client.get(reverse("update_value", args=[holding.pk]), {"cancel": "1"})
+        self.assertContains(response, 'href="https://finance.yahoo.com/quote/RELIANCE.NS"')

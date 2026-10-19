@@ -7,9 +7,12 @@ Asset classes are a typed enum on Asset, so adding e.g. SGBs or NPS is a
 migration-free code change, not a new Django app.
 """
 from decimal import Decimal
+from urllib.parse import quote
 
 from django.contrib.auth.models import User
+from django.core.validators import MinValueValidator
 from django.db import models
+from django.urls import reverse
 
 
 class Asset(models.Model):
@@ -65,6 +68,17 @@ class Asset(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_asset_type_display()})"
+
+    @property
+    def research_url(self):
+        if self.asset_type == self.AssetType.STOCK and self.identifier.strip():
+            symbol = self.identifier.strip().upper().removesuffix(".NS")
+            return f"https://finance.yahoo.com/quote/{quote(symbol, safe='')}.NS"
+        if self.asset_type == self.AssetType.MUTUAL_FUND:
+            code = self.metadata.get("scheme_code") or self.metadata.get("amfi_code")
+            if str(code).isdigit() and int(code) > 0:
+                return reverse("fund_detail", args=[int(code)])
+        return ""
 
 
 class Account(models.Model):
@@ -258,6 +272,14 @@ class RetirementSettings(models.Model):
     taxfree_return = models.DecimalField(max_digits=5, decimal_places=2, default=7,
                                          help_text="Tax-free FI return % — PPF/EPF (Settings!C8)")
     life_expectancy = models.PositiveIntegerField(default=90, help_text="Settings!C4")
+    term_cover_multiple = models.PositiveSmallIntegerField(
+        default=12, choices=[(n, f"{n}× annual income") for n in range(10, 16)])
+    protection_annual_income = models.DecimalField(
+        max_digits=20, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0)])
+    protection_major_loans = models.DecimalField(
+        max_digits=20, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    protection_liquid_assets = models.DecimalField(
+        max_digits=20, decimal_places=2, default=0, validators=[MinValueValidator(0)])
 
     class Meta:
         verbose_name_plural = "retirement settings"
@@ -279,3 +301,28 @@ class RetirementSettings(models.Model):
                            fixed_return=float(self.taxable_fi_return),
                            taxfree_return=float(self.taxfree_return),
                            life_expectancy=int(self.life_expectancy))
+
+
+class InsurancePolicy(models.Model):
+    """Protection only: neither cover nor premiums are investment holdings."""
+
+    class Type(models.TextChoices):
+        TERM = "term", "Term"
+        HEALTH = "health", "Health"
+        VEHICLE = "vehicle", "Vehicle"
+        OTHER = "other", "Other"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="insurance_policies")
+    policy_type = models.CharField(max_length=8, choices=Type.choices)
+    insurer = models.CharField(max_length=120)
+    cover_amount = models.DecimalField(max_digits=20, decimal_places=2,
+                                       validators=[MinValueValidator(0)])
+    annual_premium = models.DecimalField(max_digits=20, decimal_places=2,
+                                         validators=[MinValueValidator(0)])
+    renewal_date = models.DateField()
+
+    class Meta:
+        ordering = ["renewal_date", "pk"]
+
+    def __str__(self):
+        return f"{self.insurer} ({self.get_policy_type_display()})"

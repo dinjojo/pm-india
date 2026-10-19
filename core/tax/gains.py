@@ -36,6 +36,7 @@ class Gain:
     asset_pk: int | None = None
     isin: str = ""
     user_id: int | None = None  # owner of the account the sell was booked in
+    asset: Asset | None = None
 
     @property
     def is_long_term(self) -> bool:
@@ -109,6 +110,7 @@ def realized_gains(account_ids=None, fy: str | None = None) -> list[FYTaxSummary
                 asset_pk=tx.asset_id,
                 isin=tx.asset.isin,
                 user_id=tx.account.user_id,
+                asset=tx.asset,
             )
             if fy is None or _fy_of(tx.date) == fy:
                 gains[_fy_of(tx.date)].append(g)
@@ -140,6 +142,7 @@ class UnrealizedLot:
     asset_pk: int | None = None
     isin: str = ""
     user_ids: frozenset = frozenset()
+    asset: Asset | None = None
 
     @property
     def gain(self) -> Decimal:
@@ -200,6 +203,7 @@ def unrealized_lots():
             current=current.quantize(Decimal("0.01")),
             asset_pk=asset_id, isin=asset.isin,
             user_ids=frozenset(b.account.user_id for b in buys),
+            asset=asset,
         ))
     return sorted(out, key=lambda l: l.gain)
 

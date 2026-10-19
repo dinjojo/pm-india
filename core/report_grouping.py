@@ -170,7 +170,7 @@ def holdings_report(view, groups, snaps=None) -> dict:
             top_gainer = best if best.gain > 0 else None
             top_loser = worst if worst.gain < 0 else None
             big = max(rows, key=lambda r: r["h"].current)
-            largest = {"name": big["h"].name, "share": big["share"]}
+            largest = {"name": big["h"].name, "share": big["share"], "asset": big["h"].asset}
         spark = None
         if series and g.get("type"):
             spark = _spark([float(b.get(g["type"], 0) or 0) for b in series["breakdown"]],

@@ -17,12 +17,13 @@
 {% if user.is_authenticated %}
 {% with n=request.resolver_match.url_name %}
 <nav class="site-nav bg-white border-b border-stone-300 shadow-sm" aria-label="Main">
-  <div class="max-w-[1500px] mx-auto px-6 h-14 flex items-center gap-1">
+  <div class="max-w-[1500px] mx-auto px-6 min-h-14 py-2 flex flex-wrap items-center gap-1">
     <a href="{% url 'dashboard' %}" class="mr-5 text-[17px] font-bold tracking-tight text-stone-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 rounded">PM<span class="text-emerald-700">India</span></a>
 
     <a href="{% url 'dashboard' %}" class="nav-link {% if n == 'dashboard' %}is-active{% endif %}" {% if n == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
     <a href="{% url 'holdings' %}" class="nav-link {% if n == 'holdings' %}is-active{% endif %}" {% if n == 'holdings' %}aria-current="page"{% endif %}>Holdings</a>
     <a href="{% url 'goals' %}" class="nav-link {% if n == 'goals' or n == 'goal_detail' or n == 'goal_create' or n == 'goal_settings' %}is-active{% endif %}" {% if n == 'goals' %}aria-current="page"{% endif %}>Goals</a>
+    <a href="{% url 'protection' %}" class="nav-link {% if n == 'protection' %}is-active{% endif %}" {% if n == 'protection' %}aria-current="page"{% endif %}>Protection</a>
     <a href="{% url 'tax' %}" class="nav-link {% if n == 'tax' %}is-active{% endif %}" {% if n == 'tax' %}aria-current="page"{% endif %}>Tax</a>
 
     <span class="mx-2 h-5 w-px bg-stone-300" aria-hidden="true"></span>

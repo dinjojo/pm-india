@@ -13,14 +13,50 @@ core/snapshots.py and core/funds.py, which fall back to the network when the
 local file lacks a scheme.
 """
 import os
+import tempfile
 from datetime import date
 
 import duckdb
+import requests
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 NAV_PARQUET = os.path.join(BASE_DIR, "data", "amfi_nav_master.parquet")
+NAV_MASTER_URL = "https://api.tigzig.com/mf/v1/download/amfi_nav_master.parquet"
 
 _conn = None
+
+
+def refresh_nav_master():
+    """Stream and validate a new master before replacing the working copy."""
+    os.makedirs(os.path.dirname(NAV_PARQUET), exist_ok=True)
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=os.path.dirname(NAV_PARQUET),
+                                         suffix=".parquet", delete=False) as tmp:
+            path = tmp.name
+            with requests.get(NAV_MASTER_URL, stream=True, timeout=(15, 180)) as response:
+                response.raise_for_status()
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    tmp.write(chunk)
+        with duckdb.connect() as con:
+            newest = con.execute(
+                "SELECT max(date) FROM read_parquet(?) WHERE nav > 0 AND scheme_code IS NOT NULL",
+                [path],
+            ).fetchone()[0]
+        if newest is None:
+            raise ValueError("Downloaded NAV master contains no usable NAVs")
+        os.replace(path, NAV_PARQUET)
+        return newest
+    finally:
+        if path and os.path.exists(path):
+            os.unlink(path)
+
+
+def latest_nav_date():
+    if not _parquet_exists():
+        return None
+    return _connect().execute("SELECT max(CAST(date AS DATE)) FROM read_parquet(?)",
+                              [NAV_PARQUET]).fetchone()[0]
 
 
 def _parquet_exists() -> bool:

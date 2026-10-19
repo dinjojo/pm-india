@@ -1,5 +1,7 @@
 """Screener: metric computation against synthetic ground truth and the view."""
 import os
+import io
+import tempfile
 from unittest import mock
 
 import numpy as np
@@ -299,3 +301,65 @@ class ScreenerViewTests(TestCase):
         c = self._login()
         resp = c.get(reverse("screener"), {"window": "7Y", "go": "1"})
         self.assertEqual(resp.status_code, 200)
+
+
+class ScreenerFreshnessTests(TestCase):
+    def test_refresh_command_replaces_master_rebuilds_and_dates_results(self):
+        from django.core.management import call_command
+        from django.contrib.auth import get_user_model
+        idx = pd.bdate_range("2010-01-01", periods=2600)
+        source = pd.DataFrame({"date": idx.strftime("%Y-%m-%d"),
+            "scheme_code": 12345, "scheme_name": "Example Flexi Cap Fund - Growth",
+            "isin": "INF000000001", "nav": np.linspace(10, 37, len(idx))})
+        payload = io.BytesIO()
+        source.to_parquet(payload, index=False)
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.iter_content.return_value = [payload.getvalue()]
+        benchmark = pd.Series(np.linspace(10, 20, len(idx)), index=idx)
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(nav_history, "NAV_PARQUET", os.path.join(tmp, "nav.parquet")), \
+             mock.patch.object(sc, "SCREENER_PARQUET", os.path.join(tmp, "metrics.parquet")), \
+             mock.patch.object(sc, "load_nifty500_tri", return_value=benchmark), \
+             mock.patch.object(sc, "_fetch_jugaad_index", return_value=None), \
+             mock.patch.object(sc, "build_crisil_proxy", return_value=None), \
+             mock.patch("core.nav_history.requests.get", return_value=response):
+            call_command("build_screener", "--refresh", "--codes", "12345", stdout=io.StringIO())
+            self.assertEqual(nav_history.local_nav_history(12345)[-1][1], 37)
+            self.assertEqual(sc.data_as_of(), idx[-1].date())
+            rows = sc.query(None, None, "3Y", None, None, None, None)
+            self.assertEqual(list(rows.scheme_code), [12345])
+            self.assertEqual(rows.iloc[0].scheme_name, "Example Flexi Cap Fund - Growth")
+            self.client.force_login(get_user_model().objects.create_user("fresh"))
+            result = self.client.get(reverse("screener"), {"go": "1", "outperf_min": "0"})
+            self.assertContains(result, f'datetime="{idx[-1].date().isoformat()}"')
+            self.assertContains(result, 'href="/funds/12345/"')
+            # An ordinary rebuild must not download anything.
+            with mock.patch("core.nav_history.requests.get", side_effect=AssertionError("Unexpected download")):
+                call_command("build_screener", "--codes", "12345", stdout=io.StringIO())
+
+    def test_failed_refresh_retains_previous_master_and_metrics(self):
+        from django.core.management import call_command, CommandError
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.iter_content.return_value = [b"not a parquet file"]
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(nav_history, "NAV_PARQUET", os.path.join(tmp, "nav.parquet")), \
+             mock.patch.object(sc, "SCREENER_PARQUET", os.path.join(tmp, "metrics.parquet")), \
+             mock.patch("core.nav_history.requests.get", return_value=response):
+            for path in (nav_history.NAV_PARQUET, sc.SCREENER_PARQUET):
+                with open(path, "wb") as f:
+                    f.write(b"previous data")
+            with self.assertRaises(CommandError):
+                call_command("build_screener", "--refresh", stdout=io.StringIO())
+            for path in (nav_history.NAV_PARQUET, sc.SCREENER_PARQUET):
+                with open(path, "rb") as f:
+                    self.assertEqual(f.read(), b"previous data")
+            self.assertEqual(len(os.listdir(tmp)), 2)
+
+    def test_old_or_missing_metrics_do_not_claim_a_fresh_date(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(sc, "SCREENER_PARQUET", os.path.join(tmp, "metrics.parquet")):
+            self.assertIsNone(sc.data_as_of())
+            pd.DataFrame({"scheme_code": [1]}).to_parquet(sc.SCREENER_PARQUET)
+            self.assertIsNone(sc.data_as_of())

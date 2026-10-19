@@ -5,6 +5,7 @@
   <div>
     <h1 class="text-2xl font-semibold text-stone-900">Fund Screener</h1>
     <p class="text-stone-800 text-sm mt-1">Consistency of beating a benchmark, measured on every monthly window since April 2006 (freefincal method). Monthly rolls, total-return indices.</p>
+    <p class="text-sm text-stone-900 mt-2 tnum">{% if data_as_of %}Data as of <time datetime="{{ data_as_of|date:'Y-m-d' }}">{{ data_as_of|date:"j M Y" }}</time> <span class="text-stone-800">(newest NAV in this build's source; metrics also depend on benchmark coverage).</span>{% else %}Data date unavailable. Run <code>build_screener --refresh</code> to build dated metrics.{% endif %}</p>
   </div>
 </div>
 
@@ -96,7 +97,7 @@
     <tbody>
       {% for r in rows %}
       <tr class="border-b border-stone-200 last:border-0 hover:bg-stone-50">
-        <td class="px-4 py-2.5 font-medium text-stone-900 max-w-96"><a href="{% url 'fund_detail' r.code %}" class="hover:underline">{{ r.name }}</a></td>
+        <td class="px-4 py-2.5 font-medium text-stone-900 max-w-96"><a href="{% url 'fund_detail' r.code %}" class="block underline underline-offset-2 hover:text-emerald-800 focus-visible:outline-2 focus-visible:outline-emerald-700 rounded">{{ r.name }}</a></td>
         <td class="px-4 py-2.5 text-stone-800">{{ r.category }}</td>
         <td class="px-4 py-2.5 text-stone-800 text-xs">{{ r.benchmark }}</td>
         <td class="px-4 py-2.5 text-right">

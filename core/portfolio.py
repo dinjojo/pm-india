@@ -56,6 +56,7 @@ class HoldingView:
     # off as feed-priced data.
     manual_value: bool = False
     priority: bool = False
+    asset: Asset | None = None
 
     @property
     def asset_type_label(self) -> str:
@@ -231,6 +232,7 @@ def portfolio_view(user) -> PortfolioView:
             current=current.quantize(Decimal("0.01")),
             manual_value=manual,
             priority=h.asset.priority,
+            asset=h.asset,
         ))
     view.holdings.sort(key=lambda h: (not h.priority, -h.current))
     view.total_invested = sum((h.invested for h in view.holdings), Decimal(0))

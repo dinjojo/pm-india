@@ -12,5 +12,6 @@ static/css/app.css
 
 # Env / tooling
 .env
-.amp/
+.amp/*
+!.amp/services.yaml
 bin/

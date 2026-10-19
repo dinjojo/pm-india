@@ -4,7 +4,7 @@
           class="flex items-center gap-2">
       {% csrf_token %}
       <label for="id_current_value_{{ holding.pk }}" class="text-sm text-stone-600 whitespace-nowrap">
-        Current value of <span class="font-medium">{{ holding.asset.name }}</span> (₹)…
+        Current value of <span class="font-medium">{% include "partials/asset_link.html" with asset=holding.asset only %}</span> (₹)…
       </label>
       <input id="id_current_value_{{ holding.pk }}" name="current_value" type="number" step="0.01" inputmode="decimal"
              value="{{ holding.current_value|default_if_none:'' }}" autocomplete="off"

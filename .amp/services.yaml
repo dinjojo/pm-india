@@ -1,0 +1,8 @@
+services:
+  web:
+    command: .venv/bin/python manage.py runserver 0.0.0.0:$PORT --noreload
+    port: 8000
+    health: /accounts/login/
+    portal:
+      title: PM India
+      description: Create a local account or use an account seeded in this orb.

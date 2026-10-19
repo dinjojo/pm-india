@@ -1,4 +1,4 @@
-import math
+import pandas as pd
 
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -11,7 +11,7 @@ PAGE_SIZE = 50
 
 def _clean(v):
     """None -> dash, floats rounded and finite-checked for the template."""
-    if v is None or (isinstance(v, float) and math.isnan(v)):
+    if v is None or pd.isna(v):
         return None
     return round(float(v) * 100, 1)
 
@@ -105,6 +105,7 @@ def screener(request):
         page_query = qd.urlencode()
 
     return render(request, "screener.html", {
+        "data_as_of": screener_engine.data_as_of(),
         "categories": categories,
         "benchmarks": benchmarks,
         "windows": windows,

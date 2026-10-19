@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "[setup] Checking system prerequisites"
+packages=()
+command -v tesseract >/dev/null || packages+=(tesseract-ocr)
+python3 -c 'import ensurepip, venv' >/dev/null 2>&1 || packages+=(python3-venv)
+if ((${#packages[@]})); then
+  sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends "${packages[@]}"
+fi
+
+echo "[setup] Installing Python dependencies"
+[[ -x .venv/bin/python ]] || python3 -m venv .venv
+time .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
+
+echo "[setup] Installing Tailwind CSS v4.1.18"
+mkdir -p bin data static/css
+if [[ ! -x bin/tailwindcss ]] || [[ "$(bin/tailwindcss --help)" != *"v4.1.18"* ]]; then
+  case "$(uname -m)" in
+    x86_64) platform=linux-x64 ;;
+    aarch64) platform=linux-arm64 ;;
+    *) echo "Unsupported Tailwind architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+  curl --fail --location --retry 3 --connect-timeout 15 --max-time 180 \
+    "https://github.com/tailwindlabs/tailwindcss/releases/download/v4.1.18/tailwindcss-${platform}" \
+    -o bin/tailwindcss.download
+  chmod +x bin/tailwindcss.download
+  mv bin/tailwindcss.download bin/tailwindcss
+fi
+
+echo "[setup] Migrating SQLite and building styles"
+time .venv/bin/python manage.py migrate --noinput
+time ./bin/tailwindcss -i static/src/app.css -o static/css/app.css --minify
+.venv/bin/python manage.py check
+echo "[setup] Ready. Use .venv/bin/python; start the preview with amp orb services ensure."

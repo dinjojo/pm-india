@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# SQLite needs no daemon or authentication repair after an orb wakes.
+# Fail quickly with an actionable message if setup has not finished.
+if [[ ! -x .venv/bin/python || ! -x bin/tailwindcss || ! -f static/css/app.css ]]; then
+  echo "Orb prerequisites are missing. Run .agents/setup." >&2
+  exit 1
+fi
+echo "[resume] Python environment and styles ready; SQLite needs no service."

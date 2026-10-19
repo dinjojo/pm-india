@@ -37,6 +37,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 from core import nav_history
 
@@ -454,7 +455,15 @@ def build(limit: int | None = None, codes: list[int] | None = None) -> pd.DataFr
         if rows:
             frames.append(pd.DataFrame(rows))
     result = pd.concat(frames, ignore_index=True)
-    result.to_parquet(SCREENER_PARQUET, index=False)
+    result["nav_as_of"] = nav_history.latest_nav_date()
+    # Daily readers continue to see the last complete build while this runs.
+    pending = SCREENER_PARQUET + ".pending"
+    try:
+        result.to_parquet(pending, index=False)
+        os.replace(pending, SCREENER_PARQUET)
+    finally:
+        if os.path.exists(pending):
+            os.unlink(pending)
     return result
 
 
@@ -462,6 +471,17 @@ def build(limit: int | None = None, codes: list[int] | None = None) -> pd.DataFr
 # Query side (the old VBA macros became these SQL predicates)
 # --------------------------------------------------------------------------
 SCORE_COLS = ["ro", "up", "dc"]
+
+
+def data_as_of():
+    """Source NAV date captured at build time, never the file's mtime."""
+    if not os.path.exists(SCREENER_PARQUET):
+        return None
+    if "nav_as_of" not in pq.read_schema(SCREENER_PARQUET).names:
+        return None  # Older builds did not capture their source date.
+    return nav_history._connect().execute(
+        "SELECT max(nav_as_of) FROM read_parquet(?)", [SCREENER_PARQUET],
+    ).fetchone()[0]
 
 
 def _where(category, benchmark, window, outperf_min, upside_min, downside_min,

@@ -50,6 +50,13 @@
 
 /* ---------- Top navigation ---------- */
 @layer components {
+  .protection-form input:not([type="hidden"]), .protection-form select {
+    @apply mt-1 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900;
+    @apply focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700;
+    font-variant-numeric: tabular-nums;
+  }
+  .protection-form .errorlist { @apply mt-1 text-sm text-red-800; }
+
   .nav-link {
     @apply rounded-lg px-3 py-1.5 text-sm font-medium text-stone-700 transition-colors cursor-pointer;
     @apply hover:bg-stone-100 hover:text-stone-950;
