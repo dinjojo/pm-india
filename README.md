@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# pm-india
-Portfolio Management
-=======
 # PM India — a simple Indian portfolio tracker
 
 Self-hosted web app to track mutual funds, stocks and other Indian investments: net-worth dashboard, tax planning, goal planning (Freefincal robo-advisor methodology) and quantitative fund analytics — entirely on your own machine.
@@ -53,4 +49,3 @@ docker compose build && docker compose up -d        # :8010
 ```
 
 Not SEBI-registered; informational use only. Your financial data never leaves the machine — the SQLite DB and Parquet are gitignored.
->>>>>>> e8671d4 (PM-India portfolio tracker: Django app with MF analytics, tax, goals planner)
