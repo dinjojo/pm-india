@@ -290,7 +290,14 @@
   <div class="xl:col-span-1 min-w-0 flex flex-col gap-6">
     <div class="card card-body min-w-0">
       <h3 class="card-title mb-3">Allocation</h3>
-      {% if pv.allocation %}<div class="relative h-[200px]"><canvas id="alloc" role="img" aria-label="Doughnut chart of allocation: five largest asset classes plus everything else; exact figures in the By asset class table"></canvas></div>
+      {% if pv.allocation %}<div class="relative h-[200px]" role="img" aria-label="Doughnut chart of allocation: five largest asset classes plus everything else; exact figures in the By asset class table">
+        <div id="alloc" style="position:absolute;inset:0"></div>
+        {# Live centre label over the doughnut hole; JS positions it on the series centre. #}
+        <div id="alloc-center" aria-hidden="true" style="position:absolute;top:50%;left:30%;transform:translate(-50%,-50%);width:96px;text-align:center;pointer-events:none;line-height:1.2">
+          <div id="alloc-center-value" class="text-base font-semibold text-stone-950 tnum"></div>
+          <div id="alloc-center-label" class="text-xs text-stone-800 truncate"></div>
+        </div>
+      </div>
       <p class="text-xs text-stone-800 mt-2">Five largest classes; the rest are grouped. Exact figures are in the table.</p>{% else %}
         <p class="text-stone-800 text-sm">Add an investment to see your allocation.</p>{% endif %}
     </div>
@@ -377,33 +384,72 @@ render('1Y');
 </script>
 {% endif %}
 {% if pv.allocation %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script>
 // No red in the palette: red is reserved for losses across the app.
 // A doughnut stays legible up to ~6 slices; beyond that, the five largest
 // classes keep their own colour and the tail becomes one neutral "Other".
 (function () {
+  // alloc_values are percentage weights; rupee amounts derive from the portfolio total.
   const labels = {{ alloc_labels|safe }}, values = {{ alloc_values|safe }};
+  const worth = Number('{{ pv.total_current|stringformat:".2f" }}') || 0;
   const rows = labels.map((l, i) => ({ l, v: Number(values[i]) || 0 })).sort((a, b) => b.v - a.v);
   const top = rows.slice(0, 5), rest = rows.slice(5).reduce((s, r) => s + r.v, 0);
   if (rest > 0) top.push({ l: 'Other (' + (rows.length - 5) + ')', v: rest });
   const total = top.reduce((s, r) => s + r.v, 0) || 1;
+  const pct = v => (v / total * 100).toFixed(1) + '%';
+  const share = Object.fromEntries(top.map(r => [r.l, pct(r.v)]));
+  const amount = v => v / total * worth;
+  const inr = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const inrShort = v => v >= 1e7 ? '₹' + (v / 1e7).toFixed(2) + ' Cr' : v >= 1e5 ? '₹' + (v / 1e5).toFixed(1) + 'L' : inr(v);
   const colors = ['#059669', '#0284c7', '#d97706', '#7c3aed', '#0d9488', '#a8a29e'];
-  new Chart(document.getElementById('alloc'), {
-    type: 'doughnut',
-    data: { labels: top.map(r => r.l),
-      datasets: [{ data: top.map(r => r.v), backgroundColor: colors.slice(0, top.length),
-        borderColor: '#ffffff', borderWidth: 2, hoverOffset: 4 }] },
-    options: { animation: false, maintainAspectRatio: false, cutout: '62%',
-      layout: { padding: 4 },
-      plugins: {
-        legend: { position: 'right', labels: { boxWidth: 10, boxHeight: 10, padding: 10, color: '#1c1917',
-          font: { family: 'Inter', size: 12 },
-          generateLabels: ch => ch.data.labels.map((l, i) => ({
-            text: l + '  ' + (ch.data.datasets[0].data[i] / total * 100).toFixed(1) + '%',
-            fillStyle: colors[i], strokeStyle: colors[i], lineWidth: 0, index: i, fontColor: '#1c1917' })) } },
-        tooltip: { backgroundColor: '#1c1917', padding: 10, cornerRadius: 8,
-          callbacks: { label: c => ` ${c.label}: ${(c.parsed / total * 100).toFixed(1)}%` } } } }
+  // base.html reloads on theme toggle, so the theme is read once here.
+  const dark = document.documentElement.classList.contains('dark');
+  const TEXT = dark ? '#d6d3d1' : '#1c1917';
+  const CARD = dark ? '#292524' : '#ffffff';
+  const TIP_BG = dark ? '#e7e5e4' : '#1c1917';
+  const TIP_FG = dark ? '#1c1917' : '#f5f5f4';
+  const CENTER_X = '30%';
+
+  const el = document.getElementById('alloc');
+  const cVal = document.getElementById('alloc-center-value');
+  const cLab = document.getElementById('alloc-center-label');
+  document.getElementById('alloc-center').style.left = CENTER_X;
+  const showTotal = () => { cVal.textContent = inrShort(worth); cLab.textContent = 'Total value'; };
+  showTotal();
+
+  const chart = echarts.init(el);
+  chart.setOption({
+    backgroundColor: 'transparent',
+    textStyle: { fontFamily: 'Inter' },
+    animationDuration: 700, animationEasing: 'cubicOut',
+    animationDurationUpdate: 400, animationEasingUpdate: 'cubicOut',
+    tooltip: {
+      trigger: 'item', backgroundColor: TIP_BG, borderWidth: 0, padding: 10,
+      textStyle: { color: TIP_FG, fontSize: 12 },
+      formatter: p => '<b>' + echarts.format.encodeHTML(p.name) + '</b><br>' + inr(amount(p.value)) + ' · ' + pct(p.value),
+    },
+    legend: {
+      orient: 'vertical', right: 0, top: 'middle', icon: 'roundRect',
+      itemWidth: 10, itemHeight: 10, itemGap: 10,
+      textStyle: { color: TEXT, fontSize: 12, width: 130, overflow: 'truncate' },
+      inactiveColor: dark ? '#57534e' : '#d6d3d1',
+      formatter: name => name + '  ' + share[name],
+    },
+    color: colors.slice(0, top.length),
+    series: [{
+      type: 'pie', name: 'Allocation', radius: ['52%', '78%'], center: [CENTER_X, '50%'],
+      avoidLabelOverlap: false, label: { show: false }, labelLine: { show: false },
+      itemStyle: { borderColor: CARD, borderWidth: 2 },
+      emphasis: { scale: true, scaleSize: 6, focus: 'self', label: { show: false } },
+      blur: { itemStyle: { opacity: 0.35 } },
+      data: top.map(r => ({ name: r.l, value: r.v })),
+    }],
   });
+  chart.on('mouseover', { seriesType: 'pie' }, p => { cVal.textContent = pct(p.value); cLab.textContent = p.name; });
+  chart.on('mouseout', { seriesType: 'pie' }, showTotal);
+  chart.on('globalout', showTotal);
+  window.addEventListener('resize', () => chart.resize());
 })();
 </script>
 {% endif %}
