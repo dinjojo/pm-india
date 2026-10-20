@@ -181,3 +181,73 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Dark theme ----------
+   A toggle (nav bar) adds/removes `dark` on <html>; the choice persists in
+   localStorage. Tailwind v4 utilities resolve colors through --color-* vars
+   at use time, so remapping the palette under .dark re-themes every page
+   without per-template dark: classes. Page background darkens, surfaces
+   lift, borders fade, text inverts; saturated accents keep their hue while
+   pale tints become deep tones and dark text tones become bright ones. */
+html.dark {
+  /* Page background / surfaces */
+  --color-stone-100: #1c1917;
+  --color-white: #292524;
+  --color-stone-50: #33302b;
+  /* Hairlines */
+  --color-stone-200: #3f3a35;
+  --color-stone-300: #48433d;
+  --color-stone-400: #78716c;
+  /* Text ladder: muted → headings */
+  --color-stone-500: #a8a29e;
+  --color-stone-600: #a8a29e;
+  --color-stone-700: #d6d3d1;
+  --color-stone-800: #e7e5e4;
+  --color-stone-900: #f5f5f4;
+  --color-stone-950: #fafaf9;
+
+  /* Emerald: pale tints become deep tones, dark text tones become bright */
+  --color-emerald-50: #12261d;
+  --color-emerald-100: #16301f;
+  --color-emerald-200: #1d4230;
+  --color-emerald-300: #2a5c43;
+  --color-emerald-800: #34d399;
+  --color-emerald-900: #6ee7b7;
+
+  --color-amber-50: #2b2110;
+  --color-amber-100: #33280f;
+  --color-amber-200: #4a3a12;
+  --color-amber-300: #6b5416;
+  --color-amber-800: #fbbf24;
+  --color-amber-900: #fcd34d;
+
+  --color-red-50: #2b1512;
+  --color-red-200: #4a211b;
+  --color-red-800: #f87171;
+  --color-red-900: #fca5a5;
+
+  --color-sky-50: #0f242e;
+  --color-sky-200: #17394a;
+  --color-sky-900: #7dd3fc;
+
+  --color-positive: #34d399;
+  --color-negative: #f87171;
+}
+
+/* text-white sits only on saturated badge/button backgrounds, which keep
+   their hue — keep the label light even though --color-white is now a
+   surface. */
+html.dark .text-white { color: #fafaf9; }
+/* …except the letter avatars on tax.html: bg-stone-900 turns light, so the
+   label must turn dark. */
+html.dark .bg-stone-900.text-white { color: #1c1917; }
+/* Solid emerald chips/badges keep a deep background for light labels. */
+html.dark .bg-emerald-800 { background-color: #065f46; }
+/* Literal (non-var) alpha utilities the compiler emitted. */
+html.dark .bg-stone-100\/95 { background-color: #1c1917f2; }
+html.dark .bg-amber-50\/60 { background-color: #2b211099; }
+
+/* Toggle icon: moon in light mode, sun in dark mode. */
+.theme-icon-sun { display: none; }
+html.dark .theme-icon-moon { display: none; }
+html.dark .theme-icon-sun { display: block; }

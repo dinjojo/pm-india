@@ -12,6 +12,17 @@
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2"></script>
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body class="bg-stone-100 text-stone-900 min-h-screen text-[15px] antialiased">
 {% if user.is_authenticated %}
@@ -64,7 +75,11 @@
       </div>
     </div>
 
-    <form method="post" action="{% url 'logout' %}" class="ml-auto">{% csrf_token %}
+    <form method="post" action="{% url 'logout' %}" class="ml-auto flex items-center gap-1">{% csrf_token %}
+      <button id="theme-toggle" type="button" class="nav-link" aria-label="Toggle dark theme" title="Toggle dark theme">
+        <svg class="theme-icon-moon h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.455 2.004a.75.75 0 01.26.77 7 7 0 009.958 7.967.75.75 0 011.067.853A8.5 8.5 0 116.677 1.79a.75.75 0 01.778.214z" clip-rule="evenodd"/></svg>
+        <svg class="theme-icon-sun h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 3a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 0110 3zM4.523 5.23a.75.75 0 011.06 0l1.061 1.06a.75.75 0 11-1.06 1.061L4.522 6.29a.75.75 0 010-1.06zM3 10a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 013 10zm8.977 2.71a.75.75 0 011.06 0l1.061 1.06a.75.75 0 11-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM10 13.25a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V14a.75.75 0 01.75-.75zm-4.023 2.394a.75.75 0 010-1.06l1.06-1.061a.75.75 0 011.061 1.06l-1.06 1.061a.75.75 0 01-1.06 0zM2.75 10.75a.75.75 0 010-1.5h1.5a.75.75 0 010 1.5h-1.5zM10 6.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/></svg>
+      </button>
       <button class="nav-link">Log out</button>
     </form>
   </div>
@@ -138,5 +153,54 @@
   {% block content %}{% endblock %}
   {% block scripts %}{% endblock %}
 </main>
+<script>
+(function () {
+  function syncMeta() {
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = document.documentElement.classList.contains('dark') ? '#1c1917' : '#fafaf9';
+  }
+  syncMeta();
+
+  var toggle = document.getElementById('theme-toggle');
+  if (toggle) toggle.addEventListener('click', function () {
+    var dark = document.documentElement.classList.toggle('dark');
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) {}
+    syncMeta();
+    // Charts tint themselves on load; a reload re-renders them in the new theme.
+    location.reload();
+  });
+
+  // Chart.js options hardcode light-mode chrome (grid, ticks, tooltip).
+  // Retint them for the dark theme after the page's charts are built.
+  window.addEventListener('load', function () {
+    if (!window.Chart || !Chart.instances) return;
+    if (!document.documentElement.classList.contains('dark')) return;
+    var CHROME = '#3a3530', TICK = '#d6d3d1';
+    Object.values(Chart.instances).forEach(function (ch) {
+      Object.values(ch.config.options.scales || {}).forEach(function (s) {
+        if (s.grid && s.grid.color) s.grid.color = CHROME;
+        if (s.ticks && s.ticks.color) s.ticks.color = TICK;
+        if (s.border && s.border.color) s.border.color = CHROME;
+      });
+      var tip = ch.config.options.plugins && ch.config.options.plugins.tooltip;
+      if (tip) { tip.backgroundColor = '#e7e5e4'; tip.titleColor = '#1c1917'; tip.bodyColor = '#1c1917'; }
+      var legend = ch.config.options.plugins && (ch.config.options.plugins.legend = ch.config.options.plugins.legend || {});
+      legend.labels = legend.labels || {};
+      legend.labels.color = TICK;
+      if (legend.labels.generateLabels) {
+        var orig = legend.labels.generateLabels;
+        legend.labels.generateLabels = function (ch2) {
+          return orig(ch2).map(function (it) {
+            var copy = Object.assign({}, it);
+            copy.fontColor = TICK;
+            return copy;
+          });
+        };
+      }
+      ch.update('none');
+    });
+  });
+})();
+</script>
 </body>
 </html>
