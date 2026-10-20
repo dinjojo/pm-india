@@ -397,6 +397,16 @@ class ScreenerViewTests(TestCase):
         resp = c.get(reverse("screener"), {"window": "7Y", "go": "1"})
         self.assertEqual(resp.status_code, 200)
 
+    @mock.patch.object(sc, "query_count", return_value=0)
+    def test_thresholds_default_to_workbook_and_can_be_overridden(self, qc):
+        c = self._login()
+        c.get(reverse("screener"), {"window": "3Y", "go": "1"})
+        # (category, benchmark, window, outperf, upside, downside, mode)
+        self.assertEqual(qc.call_args.args[3:6], (0.7, 0.7, 0.7))
+        c.get(reverse("screener"), {"window": "3Y", "go": "1", "outperf_min": "0.5",
+                                    "upside_min": "", "downside_min": "0.9"})
+        self.assertEqual(qc.call_args.args[3:6], (0.5, None, 0.9))
+
 
 class ScreenerFreshnessTests(TestCase):
     def test_refresh_command_replaces_master_rebuilds_and_dates_results(self):
@@ -426,7 +436,8 @@ class ScreenerFreshnessTests(TestCase):
             self.assertEqual(list(rows.scheme_code), [12345])
             self.assertEqual(rows.iloc[0].scheme_name, "Example Flexi Cap Fund - Growth")
             self.client.force_login(get_user_model().objects.create_user("fresh"))
-            result = self.client.get(reverse("screener"), {"go": "1", "outperf_min": "0"})
+            result = self.client.get(reverse("screener"), {"go": "1", "outperf_min": "0",
+                                                          "upside_min": "", "downside_min": ""})
             self.assertContains(result, f'datetime="{idx[-1].date().isoformat()}"')
             self.assertContains(result, 'href="/funds/12345/"')
             # An ordinary rebuild must not download anything.

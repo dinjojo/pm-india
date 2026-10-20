@@ -5,8 +5,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from core.goals import (Assumptions, bucket_ladder, retirement_plan, simulate_drawdown,
-                        young_earner_advice)
+from core.goals import (Assumptions, _blended, bucket_ladder, retirement_plan,
+                        simulate_drawdown, young_earner_advice)
 from core.models import GoalPlan, RetirementSettings
 
 BASE = dict(current_age=35, retire_age=50, monthly_expense=50_000)
@@ -97,17 +97,81 @@ class BucketLadderTests(TestCase):
         self.assertEqual(sum(b.years for b in bucket_ladder(12, Assumptions())), 12)
 
     def test_each_bucket_has_own_return(self):
+        # low stress buckets F17:F19 = ROUND(glide-path average, 3): each risk
+        # bucket glides from its start equity to 0% over the years until it starts.
         b = bucket_ladder(40, Assumptions())
-        self.assertAlmostEqual(b[0].return_pct, 6.0)    # income ladder: taxable FI
-        self.assertAlmostEqual(b[1].return_pct, 8.5)    # 50% equity / 50% FI
-        self.assertAlmostEqual(b[2].return_pct, 9.1)    # 70% equity
-        self.assertAlmostEqual(b[3].return_pct, 10.0)   # 100% equity
+        self.assertAlmostEqual(b[0].return_pct, 6.0)    # income ladder: taxable FI (B13)
+        self.assertAlmostEqual(b[1].return_pct, 7.8)    # 40% → 0% over 15 years
+        self.assertAlmostEqual(b[2].return_pct, 8.6)    # 70% → 0% over 25 years
+        self.assertAlmostEqual(b[3].return_pct, 9.3)    # 100% → 0% over 33 years
+
+    def test_glide_returns_match_workbook_cached_values(self):
+        # 'bucket backend'!Z2 / W2 / T2 cached values with workbook defaults
+        # (T = 45: low starts in 15 years, medium in 26, high in 35).
+        from core.goals import bucket_glide_return
+        self.assertAlmostEqual(bucket_glide_return(15, 0.4), 0.07819213074036879, places=12)
+        self.assertAlmostEqual(bucket_glide_return(26, 0.7), 0.08593157157394415, places=12)
+        self.assertAlmostEqual(bucket_glide_return(35, 1.0), 0.0933191264488713, places=12)
+        b = bucket_ladder(45, Assumptions())
+        self.assertEqual([x.return_pct for x in b], [6.0, 7.8, 8.6, 9.3])
+
+    def test_low_bucket_glide_capped_at_its_mix(self):
+        # Workbook E146 starts the low bucket at 40% even when its mix C20 is
+        # 20% (T <= 25); the intended rule caps the start at C20.
+        from core.goals import bucket_glide_return
+        b = bucket_ladder(20, Assumptions())
+        self.assertAlmostEqual(b[1].return_pct, round(bucket_glide_return(15, 0.2), 3) * 100)
+        self.assertLess(b[1].return_pct, round(bucket_glide_return(15, 0.4), 3) * 100)
+
+    def test_bucket_corpus_is_workbook_present_value(self):
+        # Audit case: age 35, spouse 30, retire 50, ₹50k/month. M6 / R6 / W6 / AB6:
+        # each year laddered at 6% (income) or 5% inside its bucket, each risk
+        # bucket discounted at its own return until it starts.
+        r = retirement_plan(**BASE, a=Assumptions(spouse_age=30))
+        self.assertEqual([b["allocation"] for b in r.buckets],
+                         [21_569_024, 12_888_916, 7_160_694, 5_133_627])
+        self.assertEqual(r.drawdown_corpus, 46_752_261)   # G25
+        self.assertEqual(r.emergency_corpus, 2_337_613)   # F13 = 5% of G25
+        self.assertEqual(r.gross_corpus, 49_089_874)      # F9
+        self.assertEqual(r.post_ret_equity_pct, 35)       # D41
+        # R6 = R5 / (1 + F17)^15, R5 = Σ need / 1.05^o over the low bucket's 11 years
+        self.assertAlmostEqual(r.buckets[1]["allocation"],
+                               sum(r.cash_flow[15 + o]["need"] / 1.05 ** o for o in range(11))
+                               / 1.078 ** 15, delta=1)
+
+    def test_emergency_is_five_percent_of_larger_of_corpus_or_investments(self):
+        plain = retirement_plan(**BASE)
+        self.assertEqual(plain.emergency_corpus, round(0.05 * plain.drawdown_corpus))
+        rich = retirement_plan(**BASE, current_equity=80_000_000)
+        self.assertGreater(rich.corpus_in_hand, rich.drawdown_corpus)
+        self.assertEqual(rich.emergency_corpus, round(0.05 * rich.corpus_in_hand))
 
     def test_equity_return_now_matters_in_retirement(self):
         """The old blended 5.5% shortcut ignored equity returns post-retirement."""
         low = retirement_plan(**BASE, a=Assumptions(equity_return=8))
         high = retirement_plan(**BASE, a=Assumptions(equity_return=12))
         self.assertGreater(low.drawdown_corpus, high.drawdown_corpus)
+
+    def test_annual_sip_reaches_net_corpus(self):
+        # Step 3: N2 = 12·M2·(1+L2), N3 = (12·M3 + N2)·(1+L3), M3 = M2·(1+step),
+        # with L the per-year pre-retirement glide rate (Step 3 H column).
+        r = retirement_plan(**BASE)
+        n, m = 0.0, r.monthly_sip
+        for g, l in enumerate(r.pre_ret_glide):
+            n = (12 * m * 1.05 ** g + n) * (1 + l / 100)
+        self.assertLess(abs(n - r.net_corpus) / r.net_corpus, 1e-5)
+        self.assertEqual(r.schedule[-1][0], 15)
+        self.assertAlmostEqual(r.schedule[-1][2], n, delta=r.net_corpus * 1e-5)
+        # pre_goal_return summarizes the glide; the glide starts at 60% equity
+        # (Step 3 E25) and ends at the ladder's weighted equity share (D41).
+        compound = 1.0
+        for l in r.pre_ret_glide:
+            compound *= 1 + l / 100
+        self.assertAlmostEqual(r.pre_goal_return, (compound ** (1 / len(r.pre_ret_glide)) - 1) * 100,
+                               places=6)
+        self.assertAlmostEqual(r.pre_ret_glide[0],
+                               _blended(0.60, Assumptions().equity_return,
+                                        Assumptions().taxfree_return), delta=0.01)
 
     def test_bucket_growth_uses_bucket_rate(self):
         buckets = bucket_ladder(40, Assumptions())
@@ -222,9 +286,19 @@ class FloorTests(TestCase):
         self.assertEqual(r.floor_monthly, round(r.first_year_monthly_expense * 0.5))
         self.assertAlmostEqual(r.cash_flow[0]["floor"], r.first_year_monthly_expense * 6, delta=12)
 
-    def test_floor_grows_with_retirement_inflation(self):
+    def test_floor_is_flat_nominal_priced_at_annuity_rate(self):
+        # income flooring L51 is a flat amount every year; F12 = L51 / Settings!H7 (4%).
         r = retirement_plan(**BASE, floor_pct=50)
-        self.assertAlmostEqual(r.cash_flow[1]["floor"], r.cash_flow[0]["floor"] * 1.06, delta=2)
+        self.assertEqual(r.cash_flow[1]["floor"], r.cash_flow[0]["floor"])
+        self.assertEqual(r.cash_flow[-1]["floor"], r.cash_flow[0]["floor"])
+        self.assertEqual(r.annuity_cost, round(r.cash_flow[0]["floor"] / 0.04))
+        self.assertEqual(r.annuity_cost, 17_974_186)  # audit: 50% of 50k·12·1.06^15 / 4%
+
+    def test_floor_covers_share_of_shortfall_after_income(self):
+        # L51 = (year-1 expense − incomes) × B9
+        r = retirement_plan(**BASE, floor_pct=50, income_streams=[(10_000, 0)])
+        exp1 = r.cash_flow[0]["expense"]
+        self.assertAlmostEqual(r.cash_flow[0]["floor"], (exp1 - 120_000) * 0.5, delta=1)
 
     def test_floor_shrinks_investment_corpus_but_costs_an_annuity(self):
         plain = retirement_plan(**BASE)
@@ -235,9 +309,16 @@ class FloorTests(TestCase):
         self.assertEqual(floored.gross_corpus,
                          floored.drawdown_corpus + floored.annuity_cost + floored.emergency_corpus)
 
-    def test_full_floor_needs_no_drawdown(self):
+    def test_full_floor_leaves_only_expense_growth(self):
+        # A flat pension of the whole first-year expense: the buckets fund only
+        # the inflation growth above it.
+        plain = retirement_plan(**BASE)
         r = retirement_plan(**BASE, floor_pct=100)
-        self.assertEqual(r.drawdown_corpus, 0)
+        exp1 = r.cash_flow[0]["expense"]
+        self.assertEqual(r.cash_flow[0]["need"], 0)
+        self.assertAlmostEqual(r.cash_flow[1]["need"], exp1 * 0.06, delta=1)
+        self.assertGreater(r.drawdown_corpus, 0)
+        self.assertLess(r.drawdown_corpus, plain.drawdown_corpus)
 
 
 # --------------------------------------------------------------- form + view

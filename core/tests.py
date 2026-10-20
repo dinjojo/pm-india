@@ -22,12 +22,9 @@ class EngineMathTests(TestCase):
         # Rigid 10-year glide path: 30% equity for 4 years, then 25/20/15/10/5/0%.
         weights = [0.3] * 4 + [0.25, 0.2, 0.15, 0.1, 0.05, 0.0]
         self.assertEqual([round(w, 4) for w in r.glide_path], weights)
-        bal, m = 0.0, r.monthly_sip
-        for i in range(120):
-            if i and i % 12 == 0:
-                m *= 1.05
-            w = weights[i // 12]
-            bal = bal * (1 + (w * 10 + (1 - w) * 6) / 100 / 12) + m
+        bal = 0.0
+        for y, w in enumerate(weights):  # Step 4A J = (12·I + J_prev)·(1 + H)
+            bal = (12 * r.monthly_sip * 1.05 ** y + bal) * (1 + (w * 10 + (1 - w) * 6) / 100)
         self.assertLess(abs(bal - r.net_corpus) / r.net_corpus, 0.001)
 
     def test_flexible_goal_takes_more_equity(self):
@@ -35,10 +32,16 @@ class EngineMathTests(TestCase):
         flex = one_time_goal(cost_today=1_000_000, years_to_goal=10, flexible=True)
         self.assertGreater(flex.equity_alloc_pct, rigid.equity_alloc_pct)
 
-    def test_recurring_corpus_grows_with_years(self):
+    def test_recurring_plan_grows_with_years(self):
+        # Step 4B: one sinking fund per payment, so a longer goal adds payments
+        # (and SIPs) but leaves the first payment unchanged.
         short = recurring_goal(annual_cost_today=100_000, years_until_start=0, years_duration=6)
         long_ = recurring_goal(annual_cost_today=100_000, years_until_start=0, years_duration=12)
-        self.assertGreater(long_.future_cost, short.future_cost)
+        self.assertEqual((len(short.occurrences), len(long_.occurrences)), (6, 12))
+        self.assertGreater(sum(o["amount"] for o in long_.occurrences),
+                           sum(o["amount"] for o in short.occurrences))
+        self.assertEqual(long_.future_cost, short.future_cost)
+        self.assertEqual(long_.monthly_sip, short.monthly_sip)
 
     def test_retirement_first_year_expense(self):
         r = retirement_plan(current_age=35, retire_age=50, monthly_expense=50_000)

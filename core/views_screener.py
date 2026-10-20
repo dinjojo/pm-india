@@ -56,18 +56,23 @@ def screener(request):
     window = request.GET.get("window") if request.GET.get("window") in screener_engine.WINDOWS.values() else "3Y"
     mode = "excess" if request.GET.get("mode") == "excess" else "consistency"
 
-    def _min(param: str, default: float | None) -> float | None:
+    # Workbook ("Screener Inputs") ships 0.7 for every threshold. An absent
+    # param takes that default; a submitted-but-blank field means "any" (no
+    # predicate), so a cleared form input really does switch that screen off.
+    def _min(param: str, default: float | None = 0.7) -> float | None:
         v = request.GET.get(param)
-        if v is None or v == "":
+        if v is None:
             return default
+        if v.strip() == "":
+            return None
         try:
             return max(0.0, min(1.0, float(v)))
         except ValueError:
             return default
 
-    outperf_min = _min("outperf_min", 0.6)
-    upside_min = _min("upside_min", None)
-    downside_min = _min("downside_min", None)
+    outperf_min = _min("outperf_min")
+    upside_min = _min("upside_min")
+    downside_min = _min("downside_min")
 
     submitted = request.GET.get("go") is not None
     match_count = 0

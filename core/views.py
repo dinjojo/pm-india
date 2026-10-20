@@ -1,4 +1,5 @@
 import json
+from bisect import bisect_right
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -52,6 +53,17 @@ def signup(request):
 def dashboard(request):
     view = portfolio_view(request.user)
     snaps = request.user.value_snapshots.order_by("date")
+    # First visit after an import has only today's snapshot; reconstruct the
+    # month-end history from transactions and historical NAVs once, so the
+    # trend chart has something to draw.
+    if snaps.count() < 2:
+        backfill_snapshots(request.user)
+        snaps = request.user.value_snapshots.order_by("date")
+    # Refresh today's exact point so the trend ends at live NAVs, not the
+    # invested-fallback value recorded before prices loaded.
+    if not snaps or snaps.last().date < date.today():
+        record_snapshot(request.user)
+        snaps = request.user.value_snapshots.order_by("date")
     trend = {
         "dates": [s.date.isoformat() for s in snaps],
         "invested": [float(s.invested) for s in snaps],
@@ -177,14 +189,65 @@ def funds(request):
     return render(request, "funds.html", {"q": q, "results": results})
 
 
+def _my_scheme_activity(user, scheme: dict) -> dict | None:
+    """The signed-in user's own position and transaction timeline in this scheme,
+    matched by the ISIN the fund page resolves to."""
+    if not user.is_authenticated or not scheme.get("isin"):
+        return None
+    txs = list(
+        Transaction.objects.filter(account__user=user, asset__identifier=scheme["isin"])
+        .select_related("account")
+        .order_by("date", "id")
+    )
+    if not txs:
+        return None
+    invested = Decimal("0")
+    units = Decimal("0")
+    for t in txs:
+        if t.kind == Transaction.Kind.BUY:
+            invested += t.amount
+            units += t.quantity
+        elif t.kind == Transaction.Kind.SELL:
+            invested -= t.amount
+            units -= t.quantity
+    current = units * Decimal(str(scheme["latest_nav"]))
+    my = {"txs": txs, "invested": invested, "units": units,
+          "current": current, "gain": current - invested}
+
+    # NAV-chart overlay: cumulative net invested at each chart point, and one
+    # marker per buy at the NAV actually paid (snapped to the nearest chart
+    # point so category-axis alignment works).
+    points = scheme.get("chart") or []
+    days = [date.fromisoformat(p["d"]) for p in points]
+    invested_series: list[float] = []
+    buys: list[float | None] = [None] * len(points)
+    buy_amts: list[float | None] = [None] * len(points)
+    running, i = Decimal("0"), 0
+    money_in = (Transaction.Kind.BUY, Transaction.Kind.SWITCH_IN)
+    for p, day in zip(points, days):
+        while i < len(txs) and txs[i].date <= day:
+            t = txs[i]
+            sign = 1 if t.kind in money_in else -1
+            running += sign * t.amount
+            if t.kind in money_in:
+                j = max(bisect_right(days, t.date) - 1, 0)
+                if buys[j] is None:
+                    buys[j], buy_amts[j] = float(t.price), float(t.amount)
+                else:  # several purchases in one slice: merge the amounts
+                    buy_amts[j] = float(Decimal(str(buy_amts[j])) + t.amount)
+            i += 1
+        invested_series.append(float(running))
+    my["chart"] = {"invested": invested_series, "buys": buys, "buy_amts": buy_amts}
+    return my
+
+
 @login_required
 def fund_detail(request, code: int):
     scheme = scheme_detail(code)
     if scheme is None:
         messages.error(request, "Could not fetch that scheme — try again later.")
         return redirect("funds")
-    return render(request, "fund_detail.html", {"s": scheme})
-
+    return render(request, "fund_detail.html", {"s": scheme, "my": _my_scheme_activity(request.user, scheme)})
 
 @login_required
 def goals(request):
@@ -266,11 +329,13 @@ def _compute(plan) -> dict:
         rows.append((f"{label} — ₹/month at retirement, {window}",
                      f"₹{st['monthly_at_retirement']:,.0f}"))
     if r.floor_monthly:
-        rows += [(f"Guaranteed floor — annuity covering {r.floor_pct:g}% (monthly, inflation-indexed)",
+        rows += [(f"Guaranteed floor — annuity covering {r.floor_pct:g}% of the "
+                  f"first-year shortfall (flat monthly amount, not indexed)",
                   f"₹{r.floor_monthly:,.0f}"),
                  ("Estimated annuity purchase price at retirement", f"₹{r.annuity_cost:,.0f}")]
     rows += [("Bucket corpus for withdrawals", f"₹{r.drawdown_corpus:,.0f}"),
-             ("Emergency corpus (6 months)", f"₹{r.emergency_corpus:,.0f}"),
+             ("Emergency corpus (5% of investments in hand or the bucket corpus, whichever is larger)",
+              f"₹{r.emergency_corpus:,.0f}"),
              ("Gross corpus needed", f"₹{r.gross_corpus:,.0f}"),
              ("Your investments grown to retirement", f"₹{r.corpus_in_hand:,.0f}"),
              ("Corpus still needed", f"₹{r.net_corpus:,.0f}"),
@@ -325,7 +390,12 @@ SETTINGS_FIELDS = [
     ("taxable_fi_return", "Taxable fixed income return after tax % (FD, debt funds)", 0, 20),
     ("taxfree_return", "Tax-free fixed income return % (PPF / EPF)", 0, 20),
     ("life_expectancy", "Plan income until age", 60, 110),
+    # Settings!C10: plan_retirement() extends the planning period by the age
+    # gap |your age − spouse's age| when set. Blank = single.
+    ("spouse_age", "Spouse's age (for planning period; blank if single)", 18, 110),
 ]
+SETTINGS_INT_FIELDS = {"life_expectancy", "spouse_age"}
+SETTINGS_OPTIONAL_FIELDS = {"spouse_age"}
 
 
 @login_required
@@ -334,14 +404,21 @@ def goal_settings(request):
     if request.method == "POST":
         values, errors = {}, []
         for name, label, lo, hi in SETTINGS_FIELDS:
+            raw = request.POST.get(name, "").strip()
+            if not raw and name in SETTINGS_OPTIONAL_FIELDS:
+                values[name] = None
+                continue
             try:
-                v = Decimal(request.POST.get(name, ""))
+                v = Decimal(raw)
                 if not (lo <= v <= hi):
                     raise ValueError
+                if name in SETTINGS_INT_FIELDS and v != v.to_integral_value():
+                    raise ValueError
             except (ArithmeticError, ValueError):
-                errors.append(f"{label}: enter a number between {lo} and {hi}.")
+                kind = "a whole number" if name in SETTINGS_INT_FIELDS else "a number"
+                errors.append(f"{label}: enter {kind} between {lo} and {hi}.")
                 continue
-            values[name] = int(v) if name == "life_expectancy" else v
+            values[name] = int(v) if name in SETTINGS_INT_FIELDS else v
         if errors:
             for e in errors:
                 messages.error(request, e)
@@ -351,7 +428,10 @@ def goal_settings(request):
             settings.save()
             messages.success(request, "Assumptions saved — every plan now uses them.")
             return redirect("goal_settings")
-    fields = [(name, label, getattr(settings, name), lo, hi) for name, label, lo, hi in SETTINGS_FIELDS]
+    fields = [(name, label, getattr(settings, name), lo, hi,
+               "1" if name in SETTINGS_INT_FIELDS else "0.1",
+               name not in SETTINGS_OPTIONAL_FIELDS)
+              for name, label, lo, hi in SETTINGS_FIELDS]
     return render(request, "goal_settings.html", {"fields": fields})
 
 

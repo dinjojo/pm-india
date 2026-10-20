@@ -18,9 +18,10 @@ month-end NAVs rolled one month at a time since April 2006:
 - ex  excess return = tr - tb
 - sd/sdb/exr  monthly-return stdev of fund, of benchmark, and their difference
 
-The denominator is always the fund's own aligned window count (the workbook
-had 8 rows where index and fund counts diverged by a few months; aligning the
-two series first removes that artifact).
+The denominator is the aligned window count: fund and benchmark series are
+joined on common month-ends first, so both have the same number of windows.
+The workbook's score is outperformed / MIN(index_n, fund_n), applied
+consistently in all 1647 window cells; aligning first gives the same result.
 
 Benchmark policy: each category is scored against the index the workbook
 uses for it (BENCHMARK_MAP); hybrid categories also get a blended variant,

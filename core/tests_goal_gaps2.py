@@ -255,10 +255,12 @@ class GlidePathTests(TestCase):
         for flexible, n in ((False, 3), (True, 10), (False, 20)):
             r = one_time_goal(cost_today=1_000_000, years_to_goal=n, flexible=flexible)
             wb = workbook_sip(r.net_corpus, flexible, n)
-            # The app invests monthly rather than 12 x SIP at each year start, so it
-            # asks slightly more (never less) than the workbook.
-            self.assertGreaterEqual(r.monthly_sip, wb)
-            self.assertLess(r.monthly_sip / wb - 1, 0.035)
+            # Same annual schedule as the workbook: equal up to rounding to the rupee.
+            self.assertAlmostEqual(r.monthly_sip, wb, delta=0.5)
+        # Audit case: ₹20L in 10 years, rigid: workbook SIP ₹24,435, lump sum ₹26.9L.
+        audit = one_time_goal(cost_today=2_000_000, years_to_goal=10, step_up_pct=5)
+        self.assertEqual(audit.monthly_sip, 24_435)
+        self.assertEqual(audit.lumpsum_now, 2_692_114)
         flex = one_time_goal(cost_today=1_000_000, years_to_goal=10, flexible=True)
         self.assertEqual(flex.equity_alloc_pct, 40)
         self.assertAlmostEqual(flex.year_returns[-1], 6.8)
@@ -286,40 +288,74 @@ class DeriskTests(TestCase):
         base = one_time_goal(**CAR)
         safe = one_time_goal(**CAR, derisk_years=3)
         self.assertGreater(safe.monthly_sip, base.monthly_sip)
-        bal, m = 0.0, safe.monthly_sip
-        for i in range(120):
-            if i and i % 12 == 0:
-                m *= 1.05
-            rate = (safe.year_returns[i // 12] if i < 84 else 6.0) / 100 / 12
-            bal = bal * (1 + rate) + m
+        bal = 0.0
+        for y in range(10):  # annual schedule: (12·SIP + balance)·(1 + r)
+            rate = (safe.year_returns[y] if y < 7 else 6.0) / 100
+            bal = (12 * safe.monthly_sip * 1.05 ** y + bal) * (1 + rate)
         self.assertLess(abs(bal - safe.net_corpus) / safe.net_corpus, 0.001)
 
     def test_derisk_moves_existing_equity_to_fi(self):
         r = one_time_goal(**CAR, current_equity=500_000, derisk_years=3)
         self.assertEqual(r.fv_current, round(500_000 * 1.10 ** 7 * 1.06 ** 3))
 
-    def test_recurring_post_goal_return_changes_corpus(self):
+    def test_recurring_post_goal_return_overrides_fund_rate(self):
         kw = dict(annual_cost_today=200_000, years_until_start=8, years_duration=4)
         same = recurring_goal(**kw)
-        safe = recurring_goal(**kw, post_goal_return=5.0)  # below the 6% liquid rate
+        safe = recurring_goal(**kw, post_goal_return=5.0)  # below the 7% RD rate
         self.assertEqual(same.post_goal_return, same.pre_goal_return)
-        self.assertGreater(safe.future_cost, same.future_cost)
+        self.assertEqual(safe.pre_goal_return, 5.0)
+        self.assertEqual(safe.future_cost, same.future_cost)
+        self.assertGreater(safe.monthly_sip, same.monthly_sip)
+        self.assertGreater(safe.occurrences[0]["monthly_sip"], same.occurrences[0]["monthly_sip"])
+        # A 1-year fund credited at year end earns nothing: G = F / 12 at any rate.
+        self.assertEqual(safe.occurrences[1]["monthly_sip"], same.occurrences[1]["monthly_sip"])
 
-    def test_recurring_corpus_pays_every_year_including_the_first(self):
+    def test_recurring_matches_workbook_sinking_funds(self):
+        # Step 4B G = F·(r − g) / (12·((1 + r)^n − (1 + g)^n)), r = 7%, g = 5% step-up,
+        # n = 5 for the first payment and 1 (the interval) after that.
+        r = recurring_goal(annual_cost_today=200_000, years_until_start=5, years_duration=4,
+                           step_up_pct=5)
+        self.assertEqual([o["year"] for o in r.occurrences], [5, 6, 7, 8])
+        self.assertEqual([o["amount"] for o in r.occurrences],
+                         [322_102, 354_312, 389_743, 428_718])
+        self.assertEqual([o["monthly_sip"] for o in r.occurrences], [4_251, 29_526, 32_479, 35_726])
+        self.assertEqual(r.monthly_sip, 4_251)
+        self.assertEqual(r.future_cost, 322_102)
+        # Every two years, three times: n = 2 for the later payments.
+        two = recurring_goal(annual_cost_today=200_000, years_until_start=5, years_duration=3,
+                             every_years=2, step_up_pct=5)
+        self.assertEqual([(o["year"], o["invest_from"]) for o in two.occurrences],
+                         [(5, 0), (7, 5), (9, 7)])
+        f = 200_000 * 1.1 ** 7
+        self.assertAlmostEqual(two.occurrences[1]["monthly_sip"],
+                               f * 0.02 / (12 * (1.07 ** 2 - 1.05 ** 2)), delta=0.5)
+
+    def test_recurring_each_fund_accumulates_its_payment(self):
         r = recurring_goal(annual_cost_today=200_000, years_until_start=8, years_duration=4,
                            inflation_override=8.0)
-        bal, cost = float(r.future_cost), 200_000 * 1.08 ** 8
-        for _ in range(4):  # pay at the start of each year, then grow
-            bal = (bal - cost) * (1 + r.post_goal_return / 100)
-            cost *= 1.08
-        self.assertLess(abs(bal), 10)
+        for o in r.occurrences:
+            bal = 0.0
+            for k in range(o["invest_years"]):  # instalments credited at year end
+                bal = bal * 1.07 + 12 * o["monthly_sip"] * 1.05 ** k
+            self.assertAlmostEqual(bal, 200_000 * 1.08 ** o["year"], delta=12 * o["invest_years"])
+        self.assertEqual(r.schedule[-1][0], 11)  # investing runs to the last payment
 
-    def test_recurring_uses_the_liquid_rate_not_equity(self):
-        # Workbook 4B: recurring goals are saved and spent in an RD / liquid
-        # fund, never in the equity-blended goal portfolio.
+    def test_recurring_existing_money_pays_first_payments(self):
+        r = recurring_goal(annual_cost_today=200_000, years_until_start=5, years_duration=4,
+                           current_taxable_fi=400_000)
+        grown = 400_000 * 1.06 ** 5
+        self.assertEqual(r.fv_current, round(grown))
+        self.assertEqual(r.net_corpus, 0)
+        self.assertEqual(r.monthly_sip, 0)
+        left = (grown - 322_102) * 1.07
+        self.assertAlmostEqual(r.occurrences[1]["net"], 354_312 - left, delta=1)
+
+    def test_recurring_uses_the_rd_rate_not_equity(self):
+        # Workbook 4B: recurring goals are saved in an RD / liquid fund at
+        # Settings!C37 (7%), never in the equity-blended goal portfolio.
         r = recurring_goal(annual_cost_today=200_000, years_until_start=8, years_duration=4)
-        self.assertEqual(r.pre_goal_return, Assumptions().fixed_return)
-        self.assertEqual(r.post_goal_return, Assumptions().fixed_return)
+        self.assertEqual(r.pre_goal_return, Assumptions().recurring_return)
+        self.assertEqual(r.post_goal_return, 7.0)
         self.assertEqual(r.equity_alloc_pct, 0)
 
     def test_scenarios_offer_derisk_for_goals_only(self):

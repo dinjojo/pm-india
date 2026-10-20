@@ -14,12 +14,13 @@
 <form method="post" class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 max-w-2xl grid gap-4">
   {% csrf_token %}
   <div class="grid grid-cols-2 gap-4">
-    {% for name, label, value, lo, hi in fields %}
+    {% for name, label, value, lo, hi, step, required in fields %}
     <label class="grid gap-1 text-sm font-medium text-stone-900">{{ label }}
-      <input name="{{ name }}" type="number" min="{{ lo }}" max="{{ hi }}" step="{% if name == 'life_expectancy' %}1{% else %}0.1{% endif %}" required value="{{ value|floatformat:'-2' }}" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
+      <input name="{{ name }}" type="number" min="{{ lo }}" max="{{ hi }}" step="{{ step }}"{% if required %} required{% endif %} value="{% if value is not None %}{{ value|floatformat:'-2' }}{% endif %}" class="border border-stone-300 rounded-lg px-3 py-2 tnum"></label>
     {% endfor %}
   </div>
   <p class="text-xs text-stone-800">Workbook defaults: inflation 6% before and during retirement, equity 10%, taxable fixed income 6%, tax-free 7%, income until 90.</p>
+  <p class="text-xs text-stone-800">Married? Enter your spouse's age, and set "Plan income until age" for the younger of you. Retirement plans then run the age gap between you and your spouse longer (Settings!C10). Leave blank if single.</p>
   <button class="btn btn-primary w-fit">Save assumptions</button>
 </form>
 {% endblock %}

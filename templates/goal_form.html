@@ -63,7 +63,7 @@
     {% endfor %}
     <p class="text-xs text-stone-800">Each stream grows at its rate until retirement and through it, and is subtracted from that year's expense before the corpus is drawn down. Years count from retirement: 0 is the first year. A stream pays from its start year up to, but not including, its stop year — e.g. rent 0–15 for a lease that ends after 15 years, a deferred pension starting at 5. If retirement is far away, the workbook suggests leaving these at zero.</p>
   </fieldset>
-  <label class="grid gap-1 text-sm font-medium text-stone-900">Pension floor — % of first-year expense bought as an inflation-indexed annuity (0 = off)
+  <label class="grid gap-1 text-sm font-medium text-stone-900">Pension floor — % of the first-year expense shortfall bought as a flat (non-indexed) annuity at 4% (0 = off)
     <input name="pension_floor_pct" type="number" min="0" max="100" step="5" value="0" class="border border-stone-300 rounded-lg px-3 py-2 w-40 tnum"></label>
   {% endif %}
 
