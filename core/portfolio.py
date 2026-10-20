@@ -76,6 +76,9 @@ class PortfolioView:
     holdings: list = field(default_factory=list)
     total_invested: Decimal = Decimal(0)
     total_current: Decimal = Decimal(0)
+    # XIRR is per-owner: the flows must come only from this user's accounts,
+    # or another account's contributions get mixed into the return.
+    user: object = None
 
     @property
     def total_gain(self) -> Decimal:
@@ -89,7 +92,8 @@ class PortfolioView:
     def xirr(self) -> float | None:
         flows = []
         for tx in Transaction.objects.filter(
-            kind__in=[Transaction.Kind.BUY, Transaction.Kind.SELL]
+            account__user=self.user,
+            kind__in=[Transaction.Kind.BUY, Transaction.Kind.SELL, Transaction.Kind.DIVIDEND],
         ).order_by("date"):
             sign = -1 if tx.kind == Transaction.Kind.BUY else 1
             flows.append((tx.date, float(tx.amount) * sign))
@@ -209,7 +213,7 @@ class PortfolioView:
 
 
 def portfolio_view(user) -> PortfolioView:
-    view = PortfolioView()
+    view = PortfolioView(user=user)
     for h in Holding.objects.select_related("asset", "account").filter(account__user=user):
         pp = PricePoint.objects.filter(
             asset_type=h.asset.asset_type, identifier=h.asset.identifier
