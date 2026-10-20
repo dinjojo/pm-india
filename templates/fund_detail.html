@@ -35,7 +35,8 @@
 
 <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6 min-w-0">
   <h2 class="text-sm font-semibold text-stone-900 mb-3">NAV history</h2>
-  <div style="height:240px;position:relative"><canvas id="navchart" role="img" aria-label="NAV history line chart"></canvas></div>
+  <div id="navchart" style="height:300px" role="img" aria-label="NAV history line chart, zoomable by dragging a region, mouse wheel, or the slider"></div>
+  <p class="text-xs text-stone-600 mt-2">Drag a region to zoom · scroll wheel to zoom · drag inside to pan · double-click reset</p>
 </div>
 
 <div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
@@ -69,27 +70,187 @@
   {% endif %}
 </div>
 
+{% if my %}
+<div class="bg-white rounded-xl border border-stone-300 shadow-sm p-6 mt-6">
+  <h2 class="text-sm font-semibold text-stone-900">Your activity in this fund</h2>
+  <div class="grid sm:grid-cols-4 gap-4 mt-3">
+    <div class="bg-stone-50 rounded-lg border border-stone-200 p-3">
+      <p class="text-xs text-stone-700">Units held</p>
+      <p class="text-lg font-semibold tnum text-stone-900">{{ my.units|floatformat:3 }}</p>
+    </div>
+    <div class="bg-stone-50 rounded-lg border border-stone-200 p-3">
+      <p class="text-xs text-stone-700">Net invested</p>
+      <p class="text-lg font-semibold tnum text-stone-900">₹{{ my.invested|floatformat:0|intcomma }}</p>
+    </div>
+    <div class="bg-stone-50 rounded-lg border border-stone-200 p-3">
+      <p class="text-xs text-stone-700">Current value</p>
+      <p class="text-lg font-semibold tnum text-stone-900">₹{{ my.current|floatformat:0|intcomma }}</p>
+    </div>
+    <div class="bg-stone-50 rounded-lg border border-stone-200 p-3">
+      <p class="text-xs text-stone-700">Overall gain</p>
+      <p class="text-lg font-semibold tnum {% if my.gain >= 0 %}positive{% else %}negative{% endif %}">
+        {% if my.gain >= 0 %}+{% endif %}₹{{ my.gain|floatformat:0|intcomma }}
+      </p>
+    </div>
+  </div>
+  <div class="overflow-x-auto mt-4">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-stone-800 border-b border-stone-300">
+          <th class="py-2 font-semibold">Date</th>
+          <th class="py-2 font-semibold">Type</th>
+          <th class="py-2 font-semibold text-right">Units</th>
+          <th class="py-2 font-semibold text-right">NAV</th>
+          <th class="py-2 font-semibold text-right">Amount</th>
+          <th class="py-2 font-semibold">Account</th>
+        </tr>
+      </thead>
+      <tbody class="tnum">
+        {% for t in my.txs reversed %}
+        <tr class="border-t border-stone-200">
+          <td class="py-2 text-stone-900">{{ t.date }}</td>
+          <td class="py-2 text-stone-900">{{ t.get_kind_display }}</td>
+          <td class="py-2 text-right text-stone-900">{{ t.quantity|floatformat:4 }}</td>
+          <td class="py-2 text-right text-stone-900">₹{{ t.price|floatformat:4 }}</td>
+          <td class="py-2 text-right text-stone-900">₹{{ t.amount|floatformat:0|intcomma }}</td>
+          <td class="py-2 text-stone-800">{{ t.account.name }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <p class="text-sm text-stone-800 mt-4">
   <a class="text-emerald-800 font-medium hover:underline" href="{% url 'funds' %}">← Search another fund</a>
 </p>
 
-{{ s.chart|json_script:"nav-data" }}
+{{ s.chart|json_script:"nav-history-data" }}
+{% if my %}{{ my.chart|json_script:"my-chart-data" }}{% endif %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script>
-const raw = JSON.parse(document.getElementById('nav-data').textContent);
-new Chart(document.getElementById('navchart'), {
-  type: 'line',
-  data: { labels: raw.map(p => new Date(p.d).toLocaleDateString('en-IN', {month:'short', year:'2-digit'})),
-    datasets: [{ label: 'NAV', data: raw.map(p => p.nav), borderColor: '#059669', borderWidth: 2,
-      backgroundColor: 'rgba(5,150,105,0.10)', fill: true, tension: 0.25, pointRadius: 0, pointHoverRadius: 3 }]},
-  options: { animation: false, maintainAspectRatio: false,
-    interaction: { mode: 'index', intersect: false },
-    scales: {
-      x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 }, color: '#44403c' } },
-      y: { border: { display: false }, grid: { color: '#f5f5f4' }, position: 'right',
-           ticks: { maxTicksLimit: 5, font: { size: 10 }, color: '#44403c' } } },
-    plugins: { legend: { display: false },
-      tooltip: { backgroundColor: '#1c1917', padding: 10,
-        callbacks: { label: c => 'NAV ₹' + c.parsed.y.toFixed(2) } } } }
+const raw = JSON.parse(document.getElementById('nav-history-data').textContent);
+const mineEl = document.getElementById('my-chart-data');
+const mine = mineEl ? JSON.parse(mineEl.textContent) : null;
+const inr = v => '₹' + Math.round(v).toLocaleString('en-IN');
+
+// The theme toggle reloads the page, so reading the class once here is enough.
+const dark = document.documentElement.classList.contains('dark');
+const GRID = dark ? '#3a3530' : '#f5f5f4';
+const TICK = dark ? '#d6d3d1' : '#44403c';
+const TIP_BG = dark ? '#e7e5e4' : '#1c1917';
+const TIP_FG = dark ? '#1c1917' : '#f5f5f4';
+// Match the app's semantic palette: positive emerald, amber for invested.
+// Dark-mode values are the ones app.css maps --color-positive/--color-amber-800 to.
+const EMERALD = dark ? '#34d399' : '#059669';
+const EMERALD_RGB = dark ? '52,211,153' : '5,150,105';
+const AMBER = dark ? '#fbbf24' : '#b45309';
+
+const dates = raw.map(p => p.d);
+const fmtDate = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const invested = mine ? mine.invested.map((v, i) => v == null ? null : [dates[i], v]) : [];
+const buys = mine ? mine.buys.map((v, i) => v == null ? null : [dates[i], v]).filter(Boolean) : [];
+const buyAmts = mine ? mine.buy_amts : [];
+
+const chart = echarts.init(document.getElementById('navchart'));
+
+// NAV is one value per day — a cumulative level series, so the honest ECharts
+// shape is a line with a gradient area (ECharts area-chart example pattern),
+// not candlesticks, which imply intraday OHLC a fund NAV doesn't have.
+const fmtLakh = v => v === 0 ? '₹0'
+  : '₹' + (v >= 100000 ? (v / 100000).toFixed(1) + 'L' : (v / 1000).toFixed(0) + 'k');
+const series = [{
+  name: 'NAV', type: 'line', data: raw.map(p => [p.d, p.nav]), yAxisIndex: 0,
+  showSymbol: false, sampling: 'lttb', lineStyle: { width: 2, color: EMERALD },
+  areaStyle: {
+    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: `rgba(${EMERALD_RGB},0.30)` },
+      { offset: 1, color: `rgba(${EMERALD_RGB},0.03)` },
+    ]),
+  },
+}];
+if (mine) {
+  series.push({
+    name: 'Your invested', type: 'line', data: invested.filter(Boolean), yAxisIndex: 1,
+    showSymbol: false, lineStyle: { width: 1.5, color: AMBER, type: 'dashed' },
+  });
+  series.push({
+    name: 'Your buys', type: 'scatter', data: buys, yAxisIndex: 0,
+    itemStyle: { color: EMERALD, borderColor: dark ? '#6ee7b7' : '#065f46' }, symbolSize: 9,
+  });
+}
+
+chart.setOption({
+  animation: false,
+  backgroundColor: 'transparent',
+  grid: { left: 8, right: mine ? 8 : 16, top: 28, bottom: 64, containLabel: true },
+  legend: mine ? {
+    top: 0, left: 0, textStyle: { color: TICK, fontSize: 11 },
+    itemWidth: 14, itemHeight: 8,
+  } : { show: false },
+  tooltip: {
+    trigger: 'axis', backgroundColor: TIP_BG, borderWidth: 0,
+    textStyle: { color: TIP_FG, fontSize: 12 }, padding: 10,
+    axisPointer: { type: 'line', lineStyle: { color: dark ? '#d6d3d1' : '#78716c' } },
+    formatter: params => {
+      const lines = ['<b>' + fmtDate(params[0].axisValueLabel || params[0].name) + '</b>'];
+      params.forEach(p => {
+        if (p.seriesName === 'NAV') {
+          lines.push('NAV ' + inr(p.data[1]));
+        } else if (p.seriesName === 'Your invested') {
+          lines.push('Invested by then: ' + inr(p.data[1]));
+        } else if (p.seriesName === 'Your buys') {
+          const i = dates.indexOf(p.data[0]);
+          const amt = mine ? buyAmts[i] : null;
+          lines.push(amt != null ? 'You bought ' + inr(amt) + ' at NAV ' + inr(p.data[1]) : 'Your buy');
+        }
+      });
+      return lines.join('<br>');
+    },
+  },
+  toolbox: {
+    right: 8, top: 0,
+    feature: {
+      dataZoom: { title: { zoom: 'Drag a region to zoom', back: 'Reset zoom' } },
+      restore: { title: 'Reset' },
+    },
+    iconStyle: { borderColor: TICK },
+  },
+  xAxis: {
+    type: 'time',
+    axisLabel: { color: TICK, fontSize: 10, hideOverlap: true },
+    axisLine: { lineStyle: { color: GRID } }, axisTick: { show: false },
+  },
+  yAxis: mine ? [
+    { // NAV in rupees per unit, left.
+      type: 'value', scale: true,
+      axisLabel: { color: TICK, fontSize: 10, formatter: v => '₹' + v },
+      splitLine: { lineStyle: { color: GRID } },
+    },
+    { // Cumulative invested rupees, right.
+      type: 'value', scale: true,
+      axisLabel: { color: '#b45309', fontSize: 10, formatter: fmtLakh },
+      splitLine: { show: false },
+    },
+  ] : {
+    type: 'value', scale: true,
+    axisLabel: { color: TICK, fontSize: 10, formatter: v => '₹' + v },
+    splitLine: { lineStyle: { color: GRID } },
+  },
+  dataZoom: [
+    { type: 'inside', zoomOnMouseWheel: true, preventDefaultMouseMove: false },
+    { type: 'slider', height: 20, bottom: 12,
+      fillerColor: `rgba(${EMERALD_RGB},0.15)`, handleStyle: { color: EMERALD },
+      moveHandleStyle: { color: EMERALD }, dataBackground: {
+        lineStyle: { color: EMERALD }, areaStyle: { color: `rgba(${EMERALD_RGB},0.10)` } },
+      selectedDataBackground: { lineStyle: { color: EMERALD },
+        areaStyle: { color: `rgba(${EMERALD_RGB},0.25)` } },
+      textStyle: { color: TICK, fontSize: 10 }, brushSelect: false },
+  ],
+  series,
 });
+window.addEventListener('resize', () => chart.resize());
 </script>
 {% endblock %}

@@ -399,9 +399,8 @@ def scheme_detail(code: int) -> dict | None:
         "latest_date": latest_date.isoformat(),
         "returns": {k: trailing_return(y) for k, y in
                     [("1M", 1/12), ("6M", 0.5), ("1Y", 1), ("3Y", 3), ("5Y", 5)]},
-        # Downsample for the chart (keep first NAV of each slice).
-        "chart": [{"d": _parse_nav_date(d).isoformat(), "nav": nav}
-                  for d, nav in series[::max(1, len(series) // 400)]],
+        # Full daily series; the chart samples with LTTB and zooms into it.
+        "chart": [{"d": _parse_nav_date(d).isoformat(), "nav": nav} for d, nav in series],
         "dividends": dividends,
         "vr_link": f"https://www.valueresearchonline.com/funds/news-worth-tracking/?q={code}",
     }
