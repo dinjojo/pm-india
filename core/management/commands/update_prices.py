@@ -1,7 +1,8 @@
 """Price feeds: AMFI daily NAV file for mutual funds (free, official).
 
-https://www.amfiindia.com/spages/NAVAll.txt — one line per scheme:
-    ISIN Div Payout; ISIN Reinvestment; Scheme Name; NAV; Date
+https://www.amfiindia.com/spages/NAVAll.txt — one line per scheme (8 columns):
+    Scheme Code; ISIN Div Payout/Growth; ISIN Div Reinvestment; Scheme Name;
+    Plan; Option; NAV; Date
 """
 import io
 from datetime import date, datetime
@@ -17,10 +18,11 @@ AMFI_NAV_URL = "https://www.amfiindia.com/spages/NAVAll.txt"
 
 def update_mf_prices() -> int:
     """Update PricePoints for every MF asset we hold. Returns count updated."""
-    mf_identifiers = set(
-        Asset.objects.filter(asset_type=Asset.AssetType.MUTUAL_FUND)
-        .exclude(identifier="").values_list("identifier", flat=True)
-    )
+    mf_assets = {
+        a.identifier: a
+        for a in Asset.objects.filter(asset_type=Asset.AssetType.MUTUAL_FUND).exclude(identifier="")
+    }
+    mf_identifiers = set(mf_assets)
     if not mf_identifiers:
         return 0
 
@@ -29,12 +31,14 @@ def update_mf_prices() -> int:
     updated = 0
     for line in io.StringIO(resp.text):
         parts = [p.strip() for p in line.split(";")]
-        if len(parts) < 5 or not parts[0]:
-            continue
-        isin, scheme_nav, nav_raw, as_of_raw = parts[0], parts[1], parts[3], parts[4]
-        key = isin or scheme_nav  # direct-plan lines sometimes only carry ISIN growth
-        match = isin if isin in mf_identifiers else (scheme_nav if scheme_nav in mf_identifiers else None)
-        if not match or match not in mf_identifiers:
+        if len(parts) != 8:
+            continue  # header, section titles, blank lines
+        isin_payout, isin_reinv, nav_raw, as_of_raw = parts[1], parts[2], parts[6], parts[7]
+        match = next(
+            (i for i in (isin_payout, isin_reinv) if i and i != "-" and i in mf_identifiers),
+            None,
+        )
+        if not match:
             continue
         try:
             nav = Decimal(nav_raw)
@@ -46,6 +50,16 @@ def update_mf_prices() -> int:
             identifier=match,
             defaults={"price": nav, "as_of": as_of, "source": "amfi"},
         )
+        # Backfill the AMFI scheme code so holdings deep-link to the fund page.
+        asset = mf_assets[match]
+        if not (asset.metadata.get("scheme_code") or asset.metadata.get("amfi_code")):
+            try:
+                code = int(parts[0])
+            except ValueError:
+                code = 0
+            if code > 0:
+                asset.metadata = {**asset.metadata, "scheme_code": code}
+                asset.save(update_fields=["metadata"])
         updated += 1
     return updated
 

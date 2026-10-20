@@ -57,6 +57,18 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / os.environ.get("SQLITE_NAME", "data/db.sqlite3"),
+        # Multiple processes share this SQLite file (2 gunicorn workers in the
+        # container, plus management commands on the host). WAL lets readers
+        # proceed during writes, and busy_timeout makes writers wait briefly
+        # instead of failing with "database locked".
+        "OPTIONS": {
+            "transaction_mode": "IMMEDIATE",
+            "init_command": (
+                "PRAGMA journal_mode=WAL;"
+                "PRAGMA busy_timeout=15000;"
+                "PRAGMA synchronous=NORMAL;"
+            ),
+        },
     }
 }
 
