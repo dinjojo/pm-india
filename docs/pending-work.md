@@ -1,46 +1,33 @@
 # Pending work and known gaps
 
 A running note of everything that is deliberately not done, waiting, or known
-to differ. Last updated: 19 Oct 2026.
+to differ. Last updated: 20 Oct 2026.
 
 ## Goal planner (differences from the Freefincal workbook)
 
-These were verified in the October 2026 audit. Fixing them is a design
-decision, not a bug fix, because the app's version is defensible.
+The 19 Oct audit's deviations 1–4 and 8 below were fixed on 20 Oct 2026: the
+planner now follows the workbook's logic (sinking-fund recurring goals, flat
+annuity floor at 4%, PV bucket corpus at 7.8/8.6/9.3% glide-average returns
+with the 5% emergency rule, annual SIP schedule, editable spouse_age). See
+`docs/goal-planner-parity.md` for the full map. What remains deliberate:
 
-1. **Recurring goals funding model.** The workbook runs a separate sinking
-   fund for every payment at 7% with a step-up, spread across the years
-   between payments. The app pre-funds one corpus (the present value of all
-   payments) at 6% and spends from it. The app also has no "every N years"
-   interval, so a school fee due every 3 years cannot be modelled exactly.
-2. **Annuity flooring.** The workbook uses a level nominal floor priced at
-   4%. The app uses an inflation indexed floor priced as a present value at
-   6%. The app's corpus comes out about 3% higher.
-3. **Retirement corpus method.** The app re-ladders by simulation with bucket
-   rates 8.5/9.1/10% and holds a 6 month emergency fund. The workbook uses
-   static present values at 7.8/8.6/9.3%, adds a 5% of corpus emergency fund,
-   and discounts inside each bucket at 5%. Net effect: the app's corpus is
-   3 to 5% higher.
-4. **Contribution timing.** The workbook lumps 12 months of SIP at the start
-   of each year; the app invests monthly. Every app SIP is about 1.3 to 3%
-   higher than the workbook for the same target.
-5. **Young earner advice.** The app's under-26 advice (emergency fund, 100%
+1. **Recurring-goal intervals.** The workbook allows payments every N years;
+   the app's recurring goals are yearly. The sinking-fund math supports any
+   interval (`recurring_goal(every_years=…)`), but the form/summary rows don't
+   expose it yet.
+2. **Young earner advice.** The app's under-26 advice (emergency fund, 100%
    equity, 10% step-up) is not the workbook's version (150% of EPF/NPS
    contribution in equity, 20 to 25% of gross income, FIRE option, review at
-   30).
-6. **Affordability.** The app uses static bands (25/40% of take-home). The
+   30). Deliberate: the app's path is more actionable.
+3. **Affordability.** The app uses static bands (25/40% of take-home). The
    workbook checks a year-by-year cash-flow rule (salary growth, expenses,
    EMIs, all goal SIPs) and flags red years.
-7. **Workbook features not ported at all:** the unified portfolio GoalSeek
+4. **Workbook features not ported at all:** the unified portfolio GoalSeek
    (Step 6B), the annuity laddering sheet (slab tax and 18% GST), DIY
    buckets, custom allocation schedules, the "lower returns after
    retirement" option, the already-retired annuity rule, the
    goal-after-retirement warning, and adding goal SIPs that continue past
    retirement to the retirement expense.
-8. **spouse_age is stored but not editable.** The migration and the planning
-   period change shipped, but the goal settings form marks every field
-   required and cannot show a blank optional field. Needs a small template
-   change before users can set it.
 
 ## Tax
 
