@@ -2,6 +2,27 @@
 
 A self hosted web app to track your Indian investments. It shows your net worth, helps with tax planning, plans your goals using the Freefincal robo advisor method, and gives you detailed fund analytics. Everything runs on your own machine.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Dashboard, light](docs/screenshots/dashboard-light.png) | ![Dashboard, dark](docs/screenshots/dashboard-dark.png) |
+
+**Dashboard** — net worth trend, animated allocation donut, diversification and top positions. The trend chart reconstructs month-end history from real historical NAVs when daily snapshots are missing.
+
+| | |
+|---|---|
+| ![Fund analytics](docs/screenshots/fund-detail-light.png) | ![Goal planner](docs/screenshots/goal-light.png) |
+
+**Fund analytics** — zoomable NAV history (ECharts, line + gradient area, scroll/drag/double-click to zoom) with your buys overlaid, and the full risk metric suite. **Goal planner** — retirement drawdown with a 4-bucket ladder, SIP needed, and year-by-year projections.
+
+| | |
+|---|---|
+| ![Holdings](docs/screenshots/holdings-light.png) | ![Funds explorer](docs/screenshots/funds-light.png) |
+
+**Holdings** — grouped by asset class with return weights. **Funds explorer** — all 38,000+ AMFI schemes with live search.
+
+
 ## Features
 
 | Page | What it does |
@@ -64,28 +85,6 @@ sudo apt install tesseract-ocr          # only needed for the Scan feature
 .venv/bin/python manage.py createsuperuser
 .venv/bin/python manage.py runserver
 ```
-
-## Amp orbs
-
-Fresh orbs run executable `.agents/setup` to prepare `.venv`, install the Python
-requirements and Tesseract OCR, fetch standalone Tailwind CSS **v4.1.18** to
-`bin/tailwindcss`, migrate SQLite, and build `static/css/app.css`. Warm runs reuse
-installed dependencies and the Tailwind binary. `.agents/resume` only checks
-these local prerequisites; it never reinstalls packages or resets data.
-No secrets or authenticated sessions are included in setup.
-
-```sh
-.agents/setup                       # also safe to rerun after dependency changes
-amp orb services ensure             # supervised Django preview on port 8000
-.venv/bin/python manage.py createsuperuser
-```
-
-The service is declared in `.amp/services.yaml`; use the portal URL returned by
-Amp to open it. Each orb starts with an empty local database, not personal data.
-Setup deliberately leaves login credentials, demo seeding, and the large public
-NAV master/benchmark/screener datasets opt-in. For full analytics and the existing
-data-backed tests, load the benchmark and run `build_screener --refresh` as above.
-The SQLite database, downloaded data, binary and generated CSS remain ignored.
 
 ## Run in Docker
 
