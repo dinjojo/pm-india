@@ -100,9 +100,25 @@ def holdings(request):
         alloc_bar.append({"label": "Other", "current": other,
                           "weight": float(other / view.total_current * 100) if view.total_current else 0.0,
                           "color": "bg-stone-400"})
+    # Drill-down donut: asset classes at the top level, the individual
+    # holdings inside each class one click below. A doughnut stays legible up
+    # to ~6 slices, so classes beyond the seventh roll into "Other".
+    holdings_by_type: dict[str, list] = {}
+    for h in view.holdings:
+        holdings_by_type.setdefault(h.asset_type, []).append(
+            {"name": h.name, "current": float(h.current)})
+    alloc_tree = [{"label": r["label"], "current": float(r["current"]),
+                   "children": holdings_by_type.get(r["type"], [])}
+                  for r in breakdown[:7]]
+    if len(breakdown) > 7:
+        other_children = [c for r in breakdown[7:]
+                          for c in holdings_by_type.get(r["type"], [])]
+        other = sum((Decimal(str(c["current"])) for c in other_children), Decimal(0))
+        alloc_tree.append({"label": "Other", "current": float(other),
+                           "children": other_children})
     return render(request, "holdings.html",
                   {"pv": view, "groups": groups, "group": group, "group_choices": choices,
-                   "alloc_bar": alloc_bar,
+                   "alloc_bar": alloc_bar, "alloc_tree": alloc_tree,
                    "hreport": holdings_report(view, groups,
                                               snaps=request.user.value_snapshots.order_by("date"))})
 

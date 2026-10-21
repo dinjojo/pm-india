@@ -47,20 +47,29 @@
   </div>
 </div>
 
-{# ---------- Allocation bar + concentration ---------- #}
+{# ---------- Allocation donut with drill-down: classes → funds ---------- #}
 <div class="grid lg:grid-cols-3 gap-4 mt-4">
 <div class="card card-body flex flex-col {% if hreport.concentration %}lg:col-span-2{% else %}lg:col-span-3{% endif %}">
-  <h2 class="card-title mb-3">Allocation by asset class</h2>
-  <div class="flex h-3 rounded-full overflow-hidden gap-px bg-white" role="img" aria-label="Portfolio allocation by {{ group_choices }} ">
-    {% for g in alloc_bar %}
-    <div class="h-full {{ g.color }}" style="width: {% widthratio g.current pv.total_current 100 %}%" title="{{ g.label }}: {{ g.current|inr_short }} ({{ g.weight|floatformat:1 }}%)"></div>
-    {% endfor %}
+  <div class="flex items-center justify-between gap-3 mb-3">
+    <h2 id="alloc-title" class="card-title">Allocation by asset class</h2>
+    <button id="alloc-back" type="button"
+            class="chip hidden items-center gap-1 text-xs font-medium"
+            aria-label="Back to all asset classes">← All asset classes</button>
   </div>
-  <ul class="grid grid-cols-2 gap-x-10 content-start flex-1 mt-4 text-sm text-stone-900">
-    {% for g in alloc_bar %}
-    <li class="flex items-center gap-2 min-w-0 border-b border-stone-200 py-1.5"><span class="w-2.5 h-2.5 shrink-0 rounded-sm {{ g.color }}" aria-hidden="true"></span><span class="truncate">{{ g.label }}</span> <span class="ml-auto tnum font-semibold">{{ g.weight|floatformat:1 }}%</span></li>
-    {% endfor %}
-  </ul>
+  <div class="flex flex-1 flex-col md:flex-row items-center gap-5 min-h-[260px]">
+    <div class="relative w-64 h-64 shrink-0" role="img"
+         aria-label="Doughnut of allocation by asset class; click a class to see the funds inside it">
+      <div id="alloc" style="position:absolute;inset:0"></div>
+      {# Live centre label over the doughnut hole; JS positions it on the series centre. #}
+      <div id="alloc-center" aria-hidden="true"
+           style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:110px;text-align:center;pointer-events:none;line-height:1.2">
+        <div id="alloc-center-value" class="text-base font-semibold text-stone-950 tnum"></div>
+        <div id="alloc-center-label" class="text-xs text-stone-800 truncate"></div>
+      </div>
+    </div>
+    <ul id="alloc-legend" class="grid grid-cols-1 sm:grid-cols-2 gap-x-10 content-start flex-1 self-stretch text-sm text-stone-900"></ul>
+  </div>
+  {{ alloc_tree|json_script:"alloc-data" }}
 </div>
 {% with c=hreport.concentration %}{% if c %}
 <div class="card card-body">
@@ -256,5 +265,99 @@
     <a href="{% url 'import_cas' %}" class="btn btn-secondary">Import your CAS statement</a>
   </div>
 </div>
+{% endif %}
+
+{% if alloc_tree %}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script>
+// Drill-down allocation: asset classes at the top, click a class to animate
+// into its holdings, back chip to return. Red stays reserved for losses.
+(function () {
+  const tree = JSON.parse(document.getElementById('alloc-data').textContent);
+  if (!tree.length) return;
+  const worth = tree.reduce((s, r) => s + r.current, 0);
+  const inr = v => '₹' + Math.round(v).toLocaleString('en-IN');
+  const inrShort = v => v >= 1e7 ? '₹' + (v / 1e7).toFixed(2) + ' Cr' : v >= 1e5 ? '₹' + (v / 1e5).toFixed(1) + 'L' : inr(v);
+  const colors = ['#059669', '#0284c7', '#d97706', '#7c3aed', '#0d9488', '#a8a29e', '#e11d48', '#f59e0b'];
+  // base.html reloads on theme toggle, so the theme is read once here.
+  const dark = document.documentElement.classList.contains('dark');
+  const TEXT = dark ? '#d6d3d1' : '#1c1917';
+  const CARD = dark ? '#292524' : '#ffffff';
+  const TIP_BG = dark ? '#e7e5e4' : '#1c1917';
+  const TIP_FG = dark ? '#1c1917' : '#f5f5f4';
+
+  const chart = echarts.init(document.getElementById('alloc'));
+  const cVal = document.getElementById('alloc-center-value');
+  const cLab = document.getElementById('alloc-center-label');
+  const backBtn = document.getElementById('alloc-back');
+  const legend = document.getElementById('alloc-legend');
+  const title = document.getElementById('alloc-title');
+
+  let level = 0;        // 0 = classes, 1 = holdings inside one class
+  let showTotal = () => {};
+
+  function render() {
+    const node = level === 0 ? null : tree.find(r => r.label === level);
+    const rows = (node ? node.children : tree)
+      .map(r => ({ name: r.label || r.name, value: r.current }))
+      .sort((a, b) => b.value - a.value);
+    const total = rows.reduce((s, r) => s + r.value, 0) || 1;
+    const shares = Object.fromEntries(rows.map(r => [r.name, (r.value / total * 100).toFixed(1) + '%']));
+    showTotal = () => {
+      if (node) { cVal.textContent = inrShort(node.current); cLab.textContent = node.label; }
+      else { cVal.textContent = inrShort(worth); cLab.textContent = 'Total value'; }
+    };
+    chart.setOption({
+      backgroundColor: 'transparent',
+      textStyle: { fontFamily: 'Inter' },
+      animationDuration: 700, animationEasing: 'cubicOut',
+      animationDurationUpdate: 400, animationEasingUpdate: 'cubicOut',
+      tooltip: {
+        trigger: 'item', backgroundColor: TIP_BG, borderWidth: 0, padding: 10,
+        textStyle: { color: TIP_FG, fontSize: 12 },
+        formatter: p => '<b>' + echarts.format.encodeHTML(p.name) + '</b><br>' + inr(p.value) + ' · ' + (p.percent || 0).toFixed(1) + '%',
+      },
+      color: colors.slice(0, rows.length),
+      series: [{
+        type: 'pie', name: 'Allocation', radius: ['52%', '78%'],
+        avoidLabelOverlap: false, label: { show: false }, labelLine: { show: false },
+        itemStyle: { borderColor: CARD, borderWidth: 2 },
+        emphasis: { scale: true, scaleSize: 6, focus: 'self', label: { show: false } },
+        blur: { itemStyle: { opacity: 0.35 } },
+        data: rows,
+      }],
+    }, { notMerge: true });
+    legend.innerHTML = rows.map(r =>
+      '<li class="flex items-center gap-2 min-w-0 border-b border-stone-200 py-1.5 cursor-pointer hover:text-emerald-800"' +
+      ' data-name="' + echarts.format.encodeHTML(r.name) + '">' +
+      '<span class="w-2.5 h-2.5 shrink-0 rounded-sm" style="background:' + (colors[rows.indexOf(r)] || '#a8a29e') + '" aria-hidden="true"></span>' +
+      '<span class="truncate">' + echarts.format.encodeHTML(r.name) + '</span>' +
+      '<span class="ml-auto tnum font-semibold">' + shares[r.name] + '</span></li>'
+    ).join('');
+    legend.querySelectorAll('li').forEach(li => {
+      li.addEventListener('click', () => drill(li.dataset.name));
+    });
+    showTotal();
+    title.textContent = node ? 'Inside ' + node.label : 'Allocation by asset class';
+    backBtn.classList.toggle('hidden', level === 0);
+    backBtn.classList.toggle('flex', level !== 0);
+  }
+
+  function drill(name) {
+    const node = tree.find(r => r.label === name);
+    if (level === 0 && node && node.children.length > 1) { level = name; render(); }
+  }
+
+  chart.on('click', { seriesType: 'pie' }, p => drill(p.name));
+  chart.on('mouseover', { seriesType: 'pie' }, p => {
+    cVal.textContent = (p.percent || 0).toFixed(1) + '%';
+    cLab.textContent = p.name;
+  });
+  chart.on('mouseout', { seriesType: 'pie' }, () => showTotal());
+  backBtn.addEventListener('click', () => { level = 0; render(); });
+  window.addEventListener('resize', () => chart.resize());
+  render();
+})();
+</script>
 {% endif %}
 {% endblock %}
