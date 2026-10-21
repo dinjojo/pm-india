@@ -13,7 +13,7 @@ from pathlib import Path
 
 import requests
 
-from core.models import Asset, Transaction, ValueSnapshot
+from core.models import Asset, Holding, Transaction, ValueSnapshot
 from core import nav_history as nav_history_mod
 from core.portfolio import portfolio_view
 
@@ -116,6 +116,14 @@ def backfill_snapshots(user, months: int | None = None) -> int:
     navs = {a.id: _asset_nav_history(a)
             for a in assets.values() if a.asset_type in MF_SOURCES}
     nav_days = {a_id: sorted(hist) for a_id, hist in navs.items()}
+    # Passbook values, for interpolating balance-type estimates.
+    holdings = {
+        (h.asset_id, h.account_id): h
+        for h in Holding.objects.filter(account__user=user)
+    }
+    today = date.today()
+    for pos in positions.values():
+        pos.setdefault("first", pos["txs"][0][0] if pos["txs"] else today)
 
     written = 0
     for day in ends:
@@ -141,7 +149,22 @@ def backfill_snapshots(user, months: int | None = None) -> int:
                 i = bisect_right(days, day)
                 current = pos["qty"] * hist[days[i - 1]] if i else pos["amt"]
             else:
-                current = pos["amt"]  # estimate: balance-type / no feed / pre-history
+                # Balance-type asset. If a passbook value exists, interpolate
+                # growth from cost at the first transaction to that value
+                # today, so the estimated history meets the exact recorded
+                # snapshot without a discontinuity. Pure-cost otherwise.
+                h = holdings.get(key)
+                if (h is not None and h.current_value is not None
+                        and pos["amt"] and h.invested):
+                    ratio = h.current_value / h.invested
+                    if ratio > 0:
+                        span = max((today - pos["first"]).days, 1)
+                        factor = 1 + (ratio - 1) * Decimal((day - pos["first"]).days) / Decimal(span)
+                        current = pos["amt"] * factor
+                    else:
+                        current = pos["amt"]
+                else:
+                    current = pos["amt"]  # estimate: no value ever entered
             current_total += current
             breakdown[asset.asset_type] = float(breakdown.get(asset.asset_type, 0)) + float(current)
         ValueSnapshot.objects.update_or_create(
